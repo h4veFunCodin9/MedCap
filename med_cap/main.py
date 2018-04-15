@@ -262,14 +262,12 @@ def trainIters(encoder, decoder, config, n_iters, batch_size=4, print_every=10, 
             if dataset_index % print_every == 0:
                 print_loss_avg = print_loss_total / print_every
                 bleu = evaluateRandomly(encoder, decoder, config.StoreRoot)
-                print('%s (%d %d%%) %.4f; bleu = %.4f' % (timeSince(start, dataset_index / dataset_size), dataset_index, dataset_index / dataset_size * 100, print_loss_avg, bleu), end=" ")
+                print('%s (%d %d%%) %.4f; bleu = %.4f' % (timeSince(start, dataset_index / dataset_size), dataset_index, dataset_index / dataset_size * 100, print_loss_avg, bleu))
                 print_loss_total = 0
                 '''words = evaluate(encoder, decoder, config.TestImagePath)
                 for w in words:
                     print(w, end=' ')
                 print('')'''
-
-                sys.stdout.flush()
 
             if dataset_index % plot_every == 0:
                 plot_loss_avg = plot_loss_total / plot_every
