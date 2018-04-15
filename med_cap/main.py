@@ -24,7 +24,7 @@ Configuration
 HiddenSize = 512
 IUChestFeatureShape = (512, 16, 16)
 torch.manual_seed(1)
-test_image_path = '/mnt/md1/lztao/dataset/IU_Chest_XRay/NLMCXR_png/CXR5_IM-2117-1004003.png'
+test_image_path = '/mnt/md1/lztao/dataset/IU_Chest_XRay/NLMCXR_png/CXR1100_IM-0068-1001.png'
 LR = 1.0e-5
 momentum = 0.9
 '''
@@ -258,8 +258,8 @@ def showPlot(points):
 
 def trainIters(encoder, decoder, n_iters, batch_size=4, print_every=10, plot_every=100, learning_rate=0.00001):
 
-    encoder_optimizer = torch.optim.SGD(params=encoder.parameters(), lr=learning_rate)
-    decoder_optimizer = torch.optim.SGD(params=decoder.parameters(), lr=learning_rate)
+    encoder_optimizer = torch.optim.SGD(params=encoder.parameters(), lr=learning_rate, momentum=momentum)
+    decoder_optimizer = torch.optim.SGD(params=decoder.parameters(), lr=learning_rate, momentum=momentum)
     criterion = torch.nn.CrossEntropyLoss()
 
     start = time.time()
