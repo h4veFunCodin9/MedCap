@@ -17,7 +17,7 @@ import os, sys
 
 import skimage.transform as T
 
-from .config import Config
+from config import Config
 
 ######################
 # Prepare Dataset
