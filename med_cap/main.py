@@ -264,6 +264,7 @@ def trainIters(encoder, decoder, config, n_iters, batch_size=4, print_every=10, 
                 bleu = evaluateRandomly(encoder, decoder, config.StoreRoot)
                 print('%s (%d %d%%) %.4f; bleu = %.4f' % (timeSince(start, dataset_index / dataset_size), dataset_index, dataset_index / dataset_size * 100, print_loss_avg, bleu))
                 print_loss_total = 0
+                displayRandomly(encoder, decoder)
                 '''words = evaluate(encoder, decoder, config.TestImagePath)
                 for w in words:
                     print(w, end=' ')
@@ -327,6 +328,16 @@ def evaluateRandomly(encoder, decoder, store_dir, n=10):
         plt.axis('off')
         plt.savefig(os.path.join(store_path, str(i)+'.png'))
     return bleu / n
+
+def displayRandomly(encoder, decoder):
+    pair = random.choice(pairs)
+    truth_cap = pair[1]
+    print("Truth: ", truth_cap)
+    pred_cap = evaluate(encoder, decoder, pair[0])
+    print("Prediction:", end=' ')
+    for w in pred_cap:
+        print(w, end=' ')
+    print('')
 '''
 Train and evaluate
 '''
