@@ -17,25 +17,11 @@ import os, sys
 
 import skimage.transform as T
 
+from .config import Config
 
-'''
-Configuration
-'''
-HiddenSize = 512
-IUChestFeatureShape = (512, 16, 16)
-torch.manual_seed(1)
-test_image_path = '/mnt/md1/lztao/dataset/IU_Chest_XRay/NLMCXR_png/CXR1100_IM-0068-1001.png'
-LR = 1.0e-5
-momentum = 0.9
-'''
-The cardiomediastinal silhouette and pulmonary vasculature are within normal limits. 
-There is no pneumothorax or pleural effusion. There are no focal areas of consolidation. Cholecystectomy clips are present. 
-Small T-spine osteophytes. There is biapical pleural thickening, unchanged from prior. Mildly hyperexpanded lungs.
-'''
-
-'''
-Prepare Data
-'''
+######################
+# Prepare Dataset
+######################
 
 SOS_INDEX = 0
 EOS_INDEX = 1
@@ -64,8 +50,6 @@ class Lang:
         else:
             self.word2count[w] += 1
 
-import json
-
 def unicodeToAscii(s):
     return ''.join(
         c for c in unicodedata.normalize('NFD', s)
@@ -78,7 +62,7 @@ def normalizeString(s):
     s = re.sub(r"[^a-zA-Z.!?]+", r" ", s)  #除字母标点符号的其他连续字符替换成一个空格
     return s
 
-def readCaptions(annFile):
+def readCaptions(annFile, image_root):
     dataset = open(annFile, 'r').read()
     dataset = dataset.split('\n')
     pairs = []
@@ -110,18 +94,10 @@ def stat_lang(lang):
             break
     print(num, 'words take up 99.5% occurrence.')
 
-image_root = '/mnt/md1/lztao/dataset/IU_Chest_XRay/NLMCXR_png'
-pairs = readCaptions("/mnt/md1/lztao/dataset/IU_Chest_XRay/findings.txt")
-'''np.save('pairs', pairs)
-print(pairs[0])
-pairs = np.load('pairs.npy')'''
-lang = prepareDict(pairs)
-stat_lang(lang)
-print("Training samples: ", len(pairs))
+
 '''
 Model: Encoder and Decoder
 '''
-random.shuffle(pairs)
 def variableFromImagePath(image_path):
     im = np.array(Image.open(image_path))
     im = T.resize(im, (512, 512, 3), mode='reflect')
@@ -147,13 +123,13 @@ def variablesFromPair(lang, pair):
 # hidden_size = embedding size
 
 class Encoder(torch.nn.Module):
-    def __init__(self, embedding_size):
+    def __init__(self, config):
         super(Encoder, self).__init__()
-        self.embedding_size = embedding_size
+        self.embedding_size = config.IM_EmbeddingSize
 
         self.vgg = M.vgg11(pretrained=False)
-        shape = IUChestFeatureShape
-        self.linear = torch.nn.Linear(in_features=(shape[0] * shape[1] * shape[2]), out_features=embedding_size)
+        shape = config.FeatureShape
+        self.linear = torch.nn.Linear(in_features=(shape[0] * shape[1] * shape[2]), out_features=self.embedding_size)
 
     def forward(self, x):   # IU Chest X-ray image: [1, 3, 512, 512]
         feature = self.vgg.features(x) # IU Chest X-ray image: [1, 512, 16, 16]
@@ -161,13 +137,13 @@ class Encoder(torch.nn.Module):
         return embedding.view(1, -1)
 
 class Decoder(torch.nn.Module):
-    def __init__(self, input_size, hidden_size):
+    def __init__(self, input_size, config):
         super(Decoder, self).__init__()
-        self.hidden_size = hidden_size
+        self.hidden_size = config.HiddenSize
 
-        self.embedding = torch.nn.Embedding(input_size, hidden_size)
-        self.gru = torch.nn.GRU(hidden_size, hidden_size)
-        self.out = torch.nn.Linear(hidden_size, input_size)
+        self.embedding = torch.nn.Embedding(input_size, config.HiddenSize)
+        self.gru = torch.nn.GRU(config.HiddenSize, config.HiddenSize)
+        self.out = torch.nn.Linear(config.HiddenSize, input_size)
         #self.sfm = torch.nn.Softmax(dim=1)
 
     def forward(self, input, hidden):
@@ -256,10 +232,11 @@ def showPlot(points):
     plt.plot(points)
     fig.savefig('loss_tendency.png')
 
-def trainIters(encoder, decoder, n_iters, batch_size=4, print_every=10, plot_every=100, learning_rate=0.00001):
 
-    encoder_optimizer = torch.optim.SGD(params=encoder.parameters(), lr=learning_rate, momentum=momentum)
-    decoder_optimizer = torch.optim.SGD(params=decoder.parameters(), lr=learning_rate, momentum=momentum)
+def trainIters(encoder, decoder, config, n_iters, batch_size=4, print_every=10, plot_every=100):
+
+    encoder_optimizer = torch.optim.SGD(params=encoder.parameters(), lr=config.LR, momentum=config.Momentum)
+    decoder_optimizer = torch.optim.SGD(params=decoder.parameters(), lr=config.LR, momentum=config.Momentum)
     criterion = torch.nn.CrossEntropyLoss()
 
     start = time.time()
@@ -268,8 +245,6 @@ def trainIters(encoder, decoder, n_iters, batch_size=4, print_every=10, plot_eve
     plot_loss_total = 0
 
     plot_losses = []
-
-    
 
     for iter in range(1, n_iters+1):
         random.shuffle(pairs)
@@ -286,12 +261,14 @@ def trainIters(encoder, decoder, n_iters, batch_size=4, print_every=10, plot_eve
 
             if dataset_index % print_every == 0:
                 print_loss_avg = print_loss_total / print_every
-                print('%s (%d %d%%) %.4f' % (timeSince(start, dataset_index / dataset_size), dataset_index, dataset_index / dataset_size * 100, print_loss_avg), end=" ")
+                bleu = evaluateRandomly(encoder, decoder, config.StoreRoot)
+                print('%s (%d %d%%) %.4f; bleu = ' % (timeSince(start, dataset_index / dataset_size), dataset_index, dataset_index / dataset_size * 100, print_loss_avg), end=" ")
                 print_loss_total = 0
-                words = evaluate(encoder, decoder, test_image_path)
+                '''words = evaluate(encoder, decoder, config.TestImagePath)
                 for w in words:
                     print(w, end=' ')
-                print('')
+                print('')'''
+
                 sys.stdout.flush()
 
             if dataset_index % plot_every == 0:
@@ -301,7 +278,7 @@ def trainIters(encoder, decoder, n_iters, batch_size=4, print_every=10, plot_eve
 
     showPlot(plot_losses)
 
-
+# predict the caption for an image
 def evaluate(encoder, decoder, imagepath, max_length=50):
     input_variable = variableFromImagePath(imagepath)
 
@@ -329,12 +306,20 @@ def evaluate(encoder, decoder, imagepath, max_length=50):
 
     return decoded_words
 
-def evaluateRandomly(encoder, decoder, store_dir, n=5):
+# randomly choose n images and predict their captions, store the resulted image
+def evaluateRandomly(encoder, decoder, store_dir, n=10):
+    store_path = os.path.join(store_dir, 'evaluation')
+    if not os.path.exists(store_path):
+        os.mkdir(store_path)
+
+    from nltk.translate.bleu_score import sentence_bleu
+    bleu = 0
     for i in range(n):
         pair = random.choice(pairs)
         im = np.array(Image.open(pair[0]))
         truth_cap = pair[1]
         pred_cap = evaluate(encoder, decoder, pair[0])
+        bleu += sentence_bleu([truth_cap.split(' ')], pred_cap)
 
         plt.figure()
         fig, ax = plt.subplots()
@@ -342,8 +327,8 @@ def evaluateRandomly(encoder, decoder, store_dir, n=5):
         plt.imshow(im)
         plt.title('%s\nGT:%s' % (truth_cap, pred_cap))
         plt.axis('off')
-        plt.savefig(os.path.join(store_dir, str(i)+'.png'))
-
+        plt.savefig(os.path.join(store_path, str(i)+'.png'))
+    return bleu / n
 '''
 Train and evaluate
 '''
@@ -353,18 +338,51 @@ parser.add_argument('--lr', type=float, default=1.0e-3)
 
 args = parser.parse_args()
 '''
-encoder = Encoder(HiddenSize)
-decoder = Decoder(lang.n_words, HiddenSize)
-if torch.cuda.is_available():
-    encoder = encoder.cuda()
-    decoder = decoder.cuda()
+#########################
+# Configuration
+########################
 
-trainIters(encoder, decoder, 500, print_every=10, plot_every=10, learning_rate=LR)
-words = evaluate(encoder, decoder, test_image_path)
-for w in words:
-     print(w, end=' ')
+torch.manual_seed(1)
 
-# save the model
-store_root = "/mnt/md1/lztao/models/med_cap"
-torch.save(encoder.state_dict(), os.path.join(store_root, "encoder"))
-torch.save(decoder.state_dict(), os.path.join(store_root, "decoder"))
+
+if __name__ == '__main__':
+    import argparse
+    parser = argparse.ArgumentParser(description="Medical Captioning")
+    parser.add_argument('--im', required=False, default='/mnt/md1/lztao/dataset/IU_Chest_XRay/NLMCXR_png',
+                        metavar="path/to/image/dataset",
+                        help="The image dataset")
+    parser.add_argument('--cap', required=False, default="mnt/md1/lztao/dataset/IU_Chest_XRay/findings.txt",
+                        metavar='path/to/findings',
+                        help="The medical image captions")
+    parser.add_argument('--store-root', required=False, default="/mnt/md1/lztao/models/med_cap",
+                        metavar='path/to/store/models',
+                        help="Store model")
+    args = parser.parse_args()
+
+
+    class MyConfig(Config):
+        StoreRoot = args.store_root
+
+
+    config = MyConfig()
+
+    pairs = readCaptions(args.cap, args.im)
+    lang = prepareDict(pairs)
+    stat_lang(lang)
+    print("Training samples: ", len(pairs))
+    random.shuffle(pairs)
+
+    encoder = Encoder(config)
+    decoder = Decoder(lang.n_words, config)
+    if torch.cuda.is_available():
+        encoder = encoder.cuda()
+        decoder = decoder.cuda()
+
+    trainIters(encoder, decoder, config, 500, print_every=10, plot_every=10)
+    words = evaluate(encoder, decoder, config.TestImagePath)
+    for w in words:
+        print(w, end=' ')
+
+    # save the model
+    torch.save(encoder.state_dict(), os.path.join(args.store_root, "encoder"))
+    torch.save(decoder.state_dict(), os.path.join(args.store_root, "decoder"))
