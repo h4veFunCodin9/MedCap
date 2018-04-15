@@ -24,7 +24,9 @@ Configuration
 HiddenSize = 512
 IUChestFeatureShape = (512, 16, 16)
 torch.manual_seed(1)
-test_image_path = '/Users/luzhoutao/courses/毕业论文/IU Chest X-Ray/NLMCXR_png/CXR5_IM-2117-1004003.png'
+test_image_path = '/mnt/md1/lztao/dataset/IU_Chest_XRay/NLMCXR_png/CXR5_IM-2117-1004003.png'
+LR = 1.0e-5
+momentum = 0.9
 '''
 The cardiomediastinal silhouette and pulmonary vasculature are within normal limits. 
 There is no pneumothorax or pleural effusion. There are no focal areas of consolidation. Cholecystectomy clips are present. 
@@ -108,14 +110,14 @@ def stat_lang(lang):
             break
     print(num, 'words take up 99.5% occurrence.')
 
-image_root = '/Users/luzhoutao/courses/毕业论文/IU Chest X-Ray/NLMCXR_png'
-pairs = readCaptions("../findings.txt")
+image_root = '/mnt/md1/lztao/dataset/IU_Chest_XRay/NLMCXR_png'
+pairs = readCaptions("/mnt/md1/lztao/dataset/IU_Chest_XRay/findings.txt")
 '''np.save('pairs', pairs)
 print(pairs[0])
 pairs = np.load('pairs.npy')'''
 lang = prepareDict(pairs)
 stat_lang(lang)
-
+print("Training samples: ", len(pairs))
 '''
 Model: Encoder and Decoder
 '''
@@ -166,7 +168,7 @@ class Decoder(torch.nn.Module):
         self.embedding = torch.nn.Embedding(input_size, hidden_size)
         self.gru = torch.nn.GRU(hidden_size, hidden_size)
         self.out = torch.nn.Linear(hidden_size, input_size)
-        self.sfm = torch.nn.Softmax(dim=1)
+        #self.sfm = torch.nn.Softmax(dim=1)
 
     def forward(self, input, hidden):
         output = self.embedding(input).view(1, 1, -1)
@@ -357,12 +359,12 @@ if torch.cuda.is_available():
     encoder = encoder.cuda()
     decoder = decoder.cuda()
 
-trainIters(encoder, decoder, 100, print_every=10, plot_every=10)
+trainIters(encoder, decoder, 500, print_every=10, plot_every=10, learning_rate=LR)
 words = evaluate(encoder, decoder, test_image_path)
 for w in words:
      print(w, end=' ')
 
 # save the model
-store_root = "/mnt/md1/lztao/COCO/saved_models/1"
+store_root = "/mnt/md1/lztao/models/med_cap"
 torch.save(encoder.state_dict(), os.path.join(store_root, "encoder"))
 torch.save(decoder.state_dict(), os.path.join(store_root, "decoder"))
