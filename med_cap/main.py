@@ -7,13 +7,12 @@ matplotlib.use('agg') # https://stackoverflow.com/questions/4706451/how-to-save-
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 
-from collections import defaultdict
 from PIL import Image
 import numpy as np
 import unicodedata
 import re, random
 import time, math
-import os, sys
+import os
 
 import skimage.transform as T
 
@@ -70,13 +69,16 @@ def readCaptions(annFile, image_root):
         if len(p_str) <= 1:
             continue
         image_id, caption = p_str.split('\t')
-        pairs.append((os.path.join(image_root, image_id+'.png'), normalizeString(caption).strip()))
+        caption = normalizeString(caption)
+        caption = [sent.strip() for sent in caption.split(' .') if len(sent.strip()) > 0]
+        pairs.append((os.path.join(image_root, image_id+'.png'), caption))
     return pairs
 
 def prepareDict(pairs):
     lang = Lang("eng")
     for pair in pairs:
-        lang.addSentence(pair[1])
+        for sent in pair[1]:
+            lang.addSentence(sent)
     print("Language Dictionary: ", lang.n_words)
     return lang
 
@@ -110,9 +112,12 @@ def variableFromImagePath(image_path):
     return data
 
 def variableFromCaption(lang, cap):
-    indices = [lang.word2idx[w] for w in cap.split(' ')]
-    indices.append(EOS_INDEX)
-    indices = torch.autograd.Variable(torch.LongTensor(indices)).view(-1, 1)
+    indices = [[lang.word2idx[w] for w in sent.split(' ')]for sent in cap]
+    max_len = max([len(sent) for sent in indices])
+    # append End_Of_Sequence token; increase to the same size
+    for sent in indices:
+        sent.extend([EOS_INDEX]*(max_len-len(sent)+1))
+    indices = torch.autograd.Variable(torch.LongTensor(indices)).view(-1, max_len+1)
     return indices.cuda() if torch.cuda.is_available() else indices
 
 def variablesFromPair(lang, pair):
@@ -165,7 +170,7 @@ def train(input_variables, target_variables, encoder, decoder, encoder_optimizer
 
     loss = 0
     total_len = 0
-    
+
     def one_pass(input_variable, target_variable):
         im_embedding = encoder(input_variable) # [1, HiddenSize]
 
@@ -357,10 +362,10 @@ torch.manual_seed(1)
 if __name__ == '__main__':
     import argparse
     parser = argparse.ArgumentParser(description="Medical Captioning")
-    parser.add_argument('--im', required=False, default='/mnt/md1/lztao/dataset/IU_Chest_XRay/NLMCXR_png',
+    parser.add_argument('--im', required=False, default='/Users/luzhoutao/courses/毕业论文/IU Chest X-Ray/NLMCXR_png',
                         metavar="path/to/image/dataset",
                         help="The image dataset")
-    parser.add_argument('--cap', required=False, default="mnt/md1/lztao/dataset/IU_Chest_XRay/findings.txt",
+    parser.add_argument('--cap', required=False, default="/Users/luzhoutao/courses/毕业论文/IU Chest X-Ray/findings.txt",
                         metavar='path/to/findings',
                         help="The medical image captions")
     parser.add_argument('--store-root', required=False, default="/mnt/md1/lztao/models/med_cap",
@@ -380,6 +385,9 @@ if __name__ == '__main__':
     stat_lang(lang)
     print("Training samples: ", len(pairs))
     random.shuffle(pairs)
+
+    print(variablesFromPair(lang, pairs[0]))
+    input()
 
     encoder = Encoder(config)
     decoder = Decoder(lang.n_words, config)
