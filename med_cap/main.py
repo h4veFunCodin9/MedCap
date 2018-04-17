@@ -96,6 +96,16 @@ def stat_lang(lang):
             break
     print(num, 'words take up 99.5% occurrence.')
 
+# find max number of sentences; find max length of sentences
+def stat_captions(pairs):
+    w_max, s_max = 0, 0
+    for path, caption in pairs:
+        s_max = s_max if len(caption) < s_max else len(caption)
+        for sent in caption:
+            w_max = w_max if len(sent.split(' ')) < w_max else len(sent.split(' '))
+    print("Max number of sentences: ", s_max)
+    print("Max length of sentences: ", w_max)
+
 
 '''
 Model: Encoder and Decoder
@@ -141,6 +151,15 @@ class Encoder(torch.nn.Module):
         embedding = self.linear(feature.view(-1))
         return embedding.view(1, -1)
 
+# TODO
+class SentDecoder(torch.nn.Module):
+    def __init__(self, input_size, config):
+        super(SentDecoder, self).__init__()
+        self.hidden_size = config.SentLSTM_HiddenSize
+
+        self.ctx_im_W = torch.nn.Linear(input_size, config.SentLSTM_HiddenSize)
+        self.ctx_topic_W = torch.nn.Linear(config.TopicSize, )
+
 class Decoder(torch.nn.Module):
     def __init__(self, input_size, config):
         super(Decoder, self).__init__()
@@ -176,7 +195,8 @@ def train(input_variables, target_variables, encoder, decoder, encoder_optimizer
 
         target_len = target_variable.size()[0]
 
-        loss = 0
+        sent_loss = 0
+        stop_loss = 0
 
         decoder_hidden = im_embedding.view(1, 1, -1)
         decoder_input = torch.autograd.Variable(torch.LongTensor([[SOS_INDEX, ]]))
@@ -186,12 +206,12 @@ def train(input_variables, target_variables, encoder, decoder, encoder_optimizer
         if teacher_forcing:
             for di in range(target_len):
                 decoder_output, decoder_hidden = decoder(decoder_input, decoder_hidden)
-                loss += criterion(decoder_output, target_variable[di])
+                sent_loss += criterion(decoder_output, target_variable[di])
                 decoder_input = target_variable[di]
         else:
             for di in range(target_len):
                 decoder_output, decoder_hidden = decoder(decoder_input, decoder_hidden)
-                loss += criterion(decoder_output, target_variable[di])
+                sent_loss += criterion(decoder_output, target_variable[di])
                 topv, topi = decoder_output.data.topk(1)
                 ni = topi[0][0]
 
@@ -199,7 +219,7 @@ def train(input_variables, target_variables, encoder, decoder, encoder_optimizer
                 decoder_input = decoder_input.cuda() if torch.cuda.is_available() else decoder_input
                 if ni == EOS_INDEX:
                     break
-        return loss, target_len
+        return sent_loss, target_len
     
     batch_size = len(target_variables)
     for i in range(batch_size):
@@ -253,10 +273,13 @@ def trainIters(encoder, decoder, config, n_iters, batch_size=4, print_every=10, 
 
     for iter in range(1, n_iters+1):
         random.shuffle(pairs)
-        dataset_index, dataset_size = 0, len(pairs)
+        dataset_index, batch_index, dataset_size = 0, 0, len(pairs)
         while dataset_index + batch_size < dataset_size:
             training_pairs = [variablesFromPair(lang, pairs[dataset_index+i]) for i in range(batch_size)]
+
             dataset_index += batch_size
+            batch_index += 1
+
             input_variables = [p[0] for p in training_pairs]
             target_variables = [p[1] for p in training_pairs]
 
@@ -264,18 +287,15 @@ def trainIters(encoder, decoder, config, n_iters, batch_size=4, print_every=10, 
             print_loss_total += loss
             plot_loss_total += loss
 
-            if dataset_index % print_every == 0:
+            if batch_index % print_every == 0:
                 print_loss_avg = print_loss_total / print_every
                 bleu = evaluateRandomly(encoder, decoder, config.StoreRoot)
                 print('%s (%d %d%%) %.4f; bleu = %.4f' % (timeSince(start, dataset_index / dataset_size), dataset_index, dataset_index / dataset_size * 100, print_loss_avg, bleu))
                 print_loss_total = 0
                 displayRandomly(encoder, decoder)
-                '''words = evaluate(encoder, decoder, config.TestImagePath)
-                for w in words:
-                    print(w, end=' ')
-                print('')'''
 
-            if dataset_index % plot_every == 0:
+
+            if batch_index % plot_every == 0:
                 plot_loss_avg = plot_loss_total / plot_every
                 plot_losses.append(plot_loss_avg)
                 plot_loss_total = 0
@@ -374,17 +394,23 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
 
-    class MyConfig(Config):
+    class IUChest_Config(Config):
         StoreRoot = args.store_root
 
+        # the maximum number of sentences and maximum number of words per sentence
+        MAX_SENT_NUM = 20
+        MAX_WORD_NUM = 45
 
-    config = MyConfig()
+
+    config = IUChest_Config()
 
     pairs = readCaptions(args.cap, args.im)
     lang = prepareDict(pairs)
     stat_lang(lang)
     print("Training samples: ", len(pairs))
     random.shuffle(pairs)
+
+    stat_captions(pairs)
 
     print(variablesFromPair(lang, pairs[0]))
     input()
