@@ -69,13 +69,13 @@ def readCaptions(annFile, image_root):
         if len(p_str) <= 1:
             continue
         image_id, caption = p_str.split('\t')
-        pairs.append((os.path.join(image_root, image_id+'.png'), normalizeString(caption)))
+        pairs.append((os.path.join(image_root, image_id+'.png'), normalizeString(caption).strip()))
     return pairs
 
 def prepareDict(pairs):
     lang = Lang("eng")
     for pair in pairs:
-        ang.addSentence(pair[1])
+        lang.addSentence(pair[1])
     print("Language Dictionary: ", lang.n_words)
     return lang
 
@@ -109,7 +109,7 @@ def variableFromImagePath(image_path):
     return data
 
 def variableFromCaption(lang, cap):
-    indices = [lang.word2idx[w] for w in cap]
+    indices = [lang.word2idx[w] for w in cap.split(' ')]
     indices = torch.autograd.Variable(torch.LongTensor(indices)).view(-1, 1)
     return indices.cuda() if torch.cuda.is_available() else indices
 
@@ -130,7 +130,7 @@ class Encoder(torch.nn.Module):
         super(Encoder, self).__init__()
         self.embedding_size = config.IM_EmbeddingSize
 
-        self.vgg = M.vgg11(pretrained=True)
+        self.vgg = M.vgg11(pretrained=False)
         shape = config.FeatureShape
         self.linear = torch.nn.Linear(in_features=(shape[0] * shape[1] * shape[2]), out_features=self.embedding_size)
 
@@ -366,7 +366,7 @@ if __name__ == '__main__':
     parser.add_argument('--cap', required=False, default='/Users/luzhoutao/courses/毕业论文/IU Chest X-Ray/findings.txt', #"mnt/md1/lztao/dataset/IU_Chest_XRay/findings.txt",
                         metavar='path/to/findings',
                         help="The medical image captions")
-    parser.add_argument('--store-root', required=False, default="/mnt/md1/lztao/models/med_cap",
+    parser.add_argument('--store-root', required=False, default='/Users/luzhoutao/courses/毕业论文/IU Chest X-Ray/MedCap/checkpoints', #"/mnt/md1/lztao/models/med_cap",
                         metavar='path/to/store/models',
                         help="Store model")
     args = parser.parse_args()
@@ -390,6 +390,7 @@ if __name__ == '__main__':
         encoder = encoder.cuda()
         decoder = decoder.cuda()
 
+    print("------Train------")
     trainIters(encoder, decoder, config, 100, print_every=10, plot_every=10)
     words = evaluate(encoder, decoder, config.TestImagePath)
     for w in words:
