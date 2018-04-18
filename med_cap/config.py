@@ -7,11 +7,7 @@ class Config(object):
     IM_EmbeddingSize = 512
 
     # Size of hidden state in RNN
-    SentLSTM_HiddenSize = 512
-    WordLSTM_HiddenSize = 512
-
-    # Size of topic vector
-    TopicSize = 512
+    HiddenSize = 512
 
     # Shape of feature map extracted from CNN
     FeatureShape = (512, 16, 16)
