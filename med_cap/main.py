@@ -193,8 +193,6 @@ class WordDecoder(torch.nn.Module):
     def __init__(self, config):
         super(WordDecoder, self).__init__()
 
-
-
 class Decoder(torch.nn.Module):
     def __init__(self, input_size, config):
         super(Decoder, self).__init__()
@@ -255,7 +253,7 @@ def train(input_variables, target_variables, encoder, decoder, encoder_optimizer
                 if ni == EOS_INDEX:
                     break
         return sent_loss, target_len
-    
+
     batch_size = len(target_variables)
     for i in range(batch_size):
         target_variable = target_variables[i]
