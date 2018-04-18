@@ -69,16 +69,13 @@ def readCaptions(annFile, image_root):
         if len(p_str) <= 1:
             continue
         image_id, caption = p_str.split('\t')
-        caption = normalizeString(caption)
-        caption = [sent.strip() for sent in caption.split(' .') if len(sent.strip()) > 0]
-        pairs.append((os.path.join(image_root, image_id+'.png'), caption))
+        pairs.append((os.path.join(image_root, image_id+'.png'), normalizeString(caption)))
     return pairs
 
 def prepareDict(pairs):
     lang = Lang("eng")
     for pair in pairs:
-        for sent in pair[1]:
-            lang.addSentence(sent)
+        ang.addSentence(pair[1])
     print("Language Dictionary: ", lang.n_words)
     return lang
 
@@ -96,16 +93,6 @@ def stat_lang(lang):
             break
     print(num, 'words take up 99.5% occurrence.')
 
-# find max number of sentences; find max length of sentences
-def stat_captions(pairs):
-    w_max, s_max = 0, 0
-    for path, caption in pairs:
-        s_max = s_max if len(caption) < s_max else len(caption)
-        for sent in caption:
-            w_max = w_max if len(sent.split(' ')) < w_max else len(sent.split(' '))
-    print("Max number of sentences: ", s_max)
-    print("Max length of sentences: ", w_max)
-
 
 '''
 Model: Encoder and Decoder
@@ -122,18 +109,19 @@ def variableFromImagePath(image_path):
     return data
 
 def variableFromCaption(lang, cap):
-    indices = [[lang.word2idx[w] for w in sent.split(' ')]for sent in cap]
-    max_len = max([len(sent) for sent in indices])
-    # append End_Of_Sequence token; increase to the same size
-    for sent in indices:
-        sent.extend([EOS_INDEX]*(max_len-len(sent)+1))
-    indices = torch.autograd.Variable(torch.LongTensor(indices)).view(-1, max_len+1)
+    indices = [lang.word2idx[w] for w in cap]
+    indices = torch.autograd.Variable(torch.LongTensor(indices)).view(-1, 1)
     return indices.cuda() if torch.cuda.is_available() else indices
 
 def variablesFromPair(lang, pair):
     image_var = variableFromImagePath(pair[0])
     cap_var = variableFromCaption(lang, pair[1])
     return image_var, cap_var
+
+def save_model(encoder, decoder, store_root):
+    # save the model
+    torch.save(encoder.state_dict(), os.path.join(store_root, "encoder"))
+    torch.save(decoder.state_dict(), os.path.join(store_root, "decoder"))
 
 # hidden_size = embedding size
 
@@ -187,7 +175,7 @@ def train(input_variables, target_variables, encoder, decoder, encoder_optimizer
         target_len = target_variable.size()[0]
 
         sent_loss = 0
-        stop_loss = 0
+
 
         decoder_hidden = im_embedding.view(1, 1, -1)
         decoder_input = torch.autograd.Variable(torch.LongTensor([[SOS_INDEX, ]]))
@@ -284,7 +272,7 @@ def trainIters(encoder, decoder, config, n_iters, batch_size=4, print_every=10, 
                 print('%s (%d %d%%) %.4f; bleu = %.4f' % (timeSince(start, dataset_index / dataset_size), dataset_index, dataset_index / dataset_size * 100, print_loss_avg, bleu))
                 print_loss_total = 0
                 displayRandomly(encoder, decoder)
-                save_model(encoder, decoder, config.StoreRoot, (iter, bleu))
+                save_model(encoder, decoder, config.StoreRoot)
             if batch_index % plot_every == 0:
                 plot_loss_avg = plot_loss_total / plot_every
                 plot_losses.append(plot_loss_avg)
@@ -387,13 +375,8 @@ if __name__ == '__main__':
     class IUChest_Config(Config):
         StoreRoot = args.store_root
 
-        # the maximum number of sentences and maximum number of words per sentence
-        MAX_SENT_NUM = 20
-        MAX_WORD_NUM = 45
-
-
     config = IUChest_Config()
-
+    print("Read captions...")
     pairs = readCaptions(args.cap, args.im)
     lang = prepareDict(pairs)
     stat_lang(lang)
@@ -407,11 +390,7 @@ if __name__ == '__main__':
         encoder = encoder.cuda()
         decoder = decoder.cuda()
 
-    trainIters(encoder, decoder, config, 500, print_every=10, plot_every=10)
+    trainIters(encoder, decoder, config, 100, print_every=10, plot_every=10)
     words = evaluate(encoder, decoder, config.TestImagePath)
     for w in words:
         print(w, end=' ')
-
-    # save the model
-    torch.save(encoder.state_dict(), os.path.join(args.store_root, "encoder"))
-    torch.save(decoder.state_dict(), os.path.join(args.store_root, "decoder"))
