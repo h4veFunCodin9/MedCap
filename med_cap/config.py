@@ -10,6 +10,10 @@ class Config(object):
     SentLSTM_HiddenSize = 512
     WordLSTM_HiddenSize = 512
 
+    # Weight for 2 losses whose sum should be 1
+    StopLoss_Weight = 0.5
+    CapLoss_Weight = 0.5
+
     # Size of topic vector
     TopicSize = 512
 
@@ -27,3 +31,13 @@ class Config(object):
     There is no pneumothorax or pleural effusion. There are no focal areas of consolidation. Cholecystectomy clips are present. 
     Small T-spine osteophytes. There is biapical pleural thickening, unchanged from prior. Mildly hyperexpanded lungs.
     '''
+
+    def __init__(self):
+        super(Config, self).__init__()
+
+    def display(self):
+        print("Configuration: ")
+        for a in dir(self):
+            if not callable(getattr(self, a)):
+                print("{:30} {}".format(a, getattr(self, a)))
+        print("\n\n")

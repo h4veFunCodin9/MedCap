@@ -2,11 +2,6 @@ import torch
 import torchvision.models as M
 import torch.nn.functional as F
 
-import matplotlib
-matplotlib.use('agg') # https://stackoverflow.com/questions/4706451/how-to-save-a-figure-remotely-with-pylab/4706614#4706614
-import matplotlib.pyplot as plt
-import matplotlib.ticker as ticker
-
 from PIL import Image
 import numpy as np
 import unicodedata
@@ -16,7 +11,12 @@ import os
 
 import skimage.transform as T
 
-from config import Config
+from .config import Config
+
+import matplotlib
+matplotlib.use('agg') # https://stackoverflow.com/questions/4706451/how-to-save-a-figure-remotely-with-pylab/4706614#4706614
+import matplotlib.pyplot as plt
+import matplotlib.ticker as ticker
 
 ######################
 # Prepare Dataset
@@ -24,6 +24,7 @@ from config import Config
 
 SOS_INDEX = 0
 EOS_INDEX = 1
+
 
 class Lang:
     '''
@@ -49,19 +50,25 @@ class Lang:
         else:
             self.word2count[w] += 1
 
-def unicodeToAscii(s):
+    def __len(self):
+        return self.n_words
+
+
+def unicode_to_ascii(s):
     return ''.join(
         c for c in unicodedata.normalize('NFD', s)
         if unicodedata.category(c) != 'Mn'
     )
 
-def normalizeString(s):
-    s = unicodeToAscii(s.lower().strip())
+
+def normalize_string(s):
+    s = unicode_to_ascii(s.lower().strip())
     s = re.sub(r"([.!?])", r" \1 ", s)   #将标点符号用空格分开
     s = re.sub(r"[^a-zA-Z.!?]+", r" ", s)  #除字母标点符号的其他连续字符替换成一个空格
     return s
 
-def readCaptions(annFile, image_root):
+
+def read_captions(annFile, image_root):
     dataset = open(annFile, 'r').read()
     dataset = dataset.split('\n')
     pairs = []
@@ -69,18 +76,20 @@ def readCaptions(annFile, image_root):
         if len(p_str) <= 1:
             continue
         image_id, caption = p_str.split('\t')
-        caption = normalizeString(caption)
+        caption = normalize_string(caption)
         caption = [sent.strip() for sent in caption.split(' .') if len(sent.strip()) > 0]
         pairs.append((os.path.join(image_root, image_id+'.png'), caption))
     return pairs
 
-def prepareDict(pairs):
+
+def prepare_dict(pairs):
     lang = Lang("eng")
     for pair in pairs:
         for sent in pair[1]:
             lang.addSentence(sent)
     print("Language Dictionary: ", lang.n_words)
     return lang
+
 
 def stat_lang(lang):
     stat = lang.word2count.copy()
@@ -96,6 +105,7 @@ def stat_lang(lang):
             break
     print(num, 'words take up 99.5% occurrence.')
 
+
 # find max number of sentences; find max length of sentences
 def stat_captions(pairs):
     w_max, s_max = 0, 0
@@ -107,36 +117,41 @@ def stat_captions(pairs):
     print("Max length of sentences: ", w_max)
 
 
-'''
-Model: Encoder and Decoder
-'''
-def variableFromImagePath(image_path):
+def variable_from_image_path(image_path):
     im = np.array(Image.open(image_path))
     im = T.resize(im, (512, 512, 3), mode='reflect')
-        
-    data = np.zeros([1, 3, 512, 512]) # IU chest X-Ray (COCO 640x480)
-    data[0, 0, ...], data[0, 1, ...], data[0, 2, ...] = im[:,:,0], im[:,:,1], im[:,:,2]
-    
+
+    data = np.zeros([1, 3, 512, 512])  # IU chest X-Ray (COCO 640x480)
+    data[0, 0, ...], data[0, 1, ...], data[0, 2, ...] = im[:, :, 0], im[:, :, 1], im[:, :, 2]
+
     data = torch.autograd.Variable(torch.FloatTensor(data))
     data = data.cuda() if torch.cuda.is_available() else data
     return data
 
-def variableFromCaption(lang, cap):
-    indices = [[lang.word2idx[w] for w in sent.split(' ')]for sent in cap]
+
+def variable_from_caption(lang, cap, max_sent_num):
+    indices = [[lang.word2idx[w] for w in sent.split(' ')] for sent in cap]
+    stop = [0 if i < len(indices) else 1 for i in range(max_sent_num)]
+
     max_len = max([len(sent) for sent in indices])
     # append End_Of_Sequence token; increase to the same size
     for sent in indices:
-        sent.extend([EOS_INDEX]*(max_len-len(sent)+1))
-    indices = torch.autograd.Variable(torch.LongTensor(indices)).view(-1, max_len+1)
-    return indices.cuda() if torch.cuda.is_available() else indices
+        sent.extend([EOS_INDEX] * (max_len - len(sent) + 1))
 
-def variablesFromPair(lang, pair):
-    image_var = variableFromImagePath(pair[0])
-    cap_var = variableFromCaption(lang, pair[1])
-    return image_var, cap_var
+    indices = torch.autograd.Variable(torch.LongTensor(indices)).view(-1, max_len + 1)
+    stop = torch.autograd.Variable(torch.LongTensor(stop)).view(-1, max_sent_num)
+    return indices.cuda() if torch.cuda.is_available() else indices, stop.cuda() if torch.cuda.is_available() else stop
 
-# hidden_size = embedding size
 
+def variables_from_pair(lang, pair):
+    image_var = variable_from_image_path(pair[0])
+    cap_var, stop_var = variable_from_caption(lang, pair[1])
+    return image_var, cap_var, stop_var
+
+
+#############################
+# Model: Encoder and Decoder
+##############################
 class Encoder(torch.nn.Module):
     def __init__(self, config):
         super(Encoder, self).__init__()
@@ -151,14 +166,15 @@ class Encoder(torch.nn.Module):
         embedding = self.linear(feature.view(-1))
         return embedding.view(1, -1)
 
+
 # TODO
 class SentDecoder(torch.nn.Module):
-    def __init__(self, input_size, config):
+    def __init__(self, config):
         super(SentDecoder, self).__init__()
         self.hidden_size = config.SentLSTM_HiddenSize
         self.topic_size = config.TopicSize
         # context vector for each time step
-        self.ctx_im_W = torch.nn.Linear(input_size, self.hidden_size)
+        self.ctx_im_W = torch.nn.Linear(config.IM_EmbeddingSize, self.hidden_size)
         self.ctx_h_W = torch.nn.Linear(self.hidden_size, self.hidden_size)
         # RNN unit
         self.gru = torch.nn.GRU(self.hidden_size, self.hidden_size)
@@ -187,49 +203,68 @@ class SentDecoder(torch.nn.Module):
         stop = F.tanh(stop)
         stop = self.stop_W(stop)
 
-        return topic, stop
+        return topic, stop, hidden
+
+    def init_hidden(self):
+        hidden = torch.autograd.Variable(torch.zeros(1, 1, self.hidden_size))
+        hidden = hidden.cuda() if torch.cuda.is_available() else hidden
+        return hidden
+
 
 class WordDecoder(torch.nn.Module):
     def __init__(self, config):
         super(WordDecoder, self).__init__()
+        self.hidden_size = config.WordLSTM_HiddenSize
 
-class Decoder(torch.nn.Module):
-    def __init__(self, input_size, config):
-        super(Decoder, self).__init__()
-        self.hidden_size = config.HiddenSize
-
-        self.embedding = torch.nn.Embedding(input_size, config.HiddenSize)
-        self.gru = torch.nn.GRU(config.HiddenSize, config.HiddenSize)
-        self.out = torch.nn.Linear(config.HiddenSize, input_size)
-        #self.sfm = torch.nn.Softmax(dim=1)
+        self.embedding = torch.nn.Embedding(config.DICT_SIZE, self.hidden_size)
+        self.gru = torch.nn.GRU(self.hidden_size, self.hidden_size)
+        self.out = torch.nn.Linear(self.hidden_size, config.DICT_SIZE)
 
     def forward(self, input, hidden):
         output = self.embedding(input).view(1, 1, -1)
         output = F.relu(output)
         output, hidden = self.gru(output, hidden)
-        output = self.out(output[0])
-        #output = self.sfm(out)
+        output = self.out(output)
         return output, hidden
+
+
+def save_model(encoder, decoder, store_root)
+    # save the model
+    print("Saving models...")
+    torch.save(encoder.state_dict(), os.path.join(store_root, "encoder"))
+    torch.save(decoder.state_dict(), os.path.join(store_root, "decoder"))
+    print("Done!")
 
 
 '''
 Train and evaluate functionality
 '''
 
-def train(input_variables, target_variables, encoder, decoder, encoder_optimizer, decoder_optimizer, criterion, max_length=50):
+
+def train(input_variables, cap_target_variables, stop_target_variables, encoder, sent_decoder, word_decoder, encoder_optimizer, sent_decoder_optimizer,
+          word_decoder_optimizer, criterion, config):
     encoder_optimizer.zero_grad()
-    decoder_optimizer.zero_grad()
+    sent_decoder_optimizer.zero_grad()
+    word_decoder_optimizer.zero_grad()
 
-    loss = 0
-    total_len = 0
+    stop_loss, cap_loss = 0, 0
 
-    def one_pass(input_variable, target_variable):
+    total_sent_num, total_word_num = 0, 0
+
+    def one_pass(input_variable, cap_target_variable, stop_target_variable):
         im_embedding = encoder(input_variable) # [1, HiddenSize]
 
         target_len = target_variable.size()[0]
 
-        sent_loss = 0
+        cap_loss = 0
         stop_loss = 0
+
+        # sentence LSTM
+        sent_decoder_hidden = sent_decoder.init_hidden()
+        sent_decoder_input = im_embedding
+
+        # TODO
+        # TODO
 
         decoder_hidden = im_embedding.view(1, 1, -1)
         decoder_input = torch.autograd.Variable(torch.LongTensor([[SOS_INDEX, ]]))
@@ -254,90 +289,136 @@ def train(input_variables, target_variables, encoder, decoder, encoder_optimizer
                     break
         return sent_loss, target_len
     
-    batch_size = len(target_variables)
+    batch_size = len(input_variables)
     for i in range(batch_size):
-        target_variable = target_variables[i]
+        cap_target_variable = cap_target_variables[i]
+        stop_target_variable = stop_target_variables[i]
         input_variable = input_variables[i]
-        cur_loss, cur_len = one_pass(input_variable, target_variable)
-        total_len += cur_len
-        loss += cur_loss
 
+        cur_stop_loss, cur_cap_loss, cur_sent_num, cur_word_num = one_pass(input_variable, cap_target_variable, stop_target_variable)
+
+        total_sent_num += cur_sent_num
+        total_word_num += cur_word_num
+
+        stop_loss += cur_stop_loss
+        cap_loss += cur_cap_loss
+
+    loss = config.CapLoss_Weight * cap_loss + config.StopLoss_Weight * stop_loss
     loss.backward()
 
     encoder_optimizer.step()
-    decoder_optimizer.step()
+    sent_decoder_optimizer.step()
+    word_decoder_optimizer.step()
 
-    return loss.data[0] / total_len
+    return stop_loss.data[0] / total_word_num, cap_loss.data[0] / total_sent_num,
 
-def asMinutes(s):
+
+def as_minute(s):
     m = math.floor(s / 60)
     s -= m * 60
     return '%dm %ds' % (m, s)
 
-def timeSince(since, percent):
+
+def time_since(since, percent):
     now = time.time()
     s = now - since  # 已经经过的时间
     es = s / (percent)  # 估计的总时间
     rs = es - s  # 估计的剩余时间
-    return '%s (- %s)' % (asMinutes(s), asMinutes(rs))
+    return '%s (- %s)' % (as_minute(s), as_minute(rs))
 
-def showPlot(points):
+
+def show_plot(points, name):
     plt.figure()
     fig, ax = plt.subplots()
     # this locator puts ticks at regular intervals
     loc = ticker.MultipleLocator(base=0.2)
     ax.yaxis.set_major_locator(loc)
     plt.plot(points)
-    fig.savefig('loss_tendency.png')
+    fig.savefig(name+'_tendency.png')
 
 
-def trainIters(encoder, decoder, config, n_iters, batch_size=4, print_every=10, plot_every=100):
+def train_iters(encoder, sent_decoder, word_decoder, config, n_iters, batch_size=4, print_every=10, plot_every=100):
 
     encoder_optimizer = torch.optim.SGD(params=encoder.parameters(), lr=config.LR, momentum=config.Momentum)
-    decoder_optimizer = torch.optim.SGD(params=decoder.parameters(), lr=config.LR, momentum=config.Momentum)
+    sent_decoder_optimizer = torch.optim.SGD(params=sent_decoder.parameters(), lr=config.LR, momentum=config.Momentum)
+    word_decoder_optimizer = torch.optim.SGD(params=word_decoder.parameters(), lr=config.LR, momentum=config.Momentum)
+
     criterion = torch.nn.CrossEntropyLoss()
 
     start = time.time()
 
+    print_stop_loss_total = 0
+    print_caption_loss_total = 0
     print_loss_total = 0
+
+    plot_stop_loss_total = 0
+    plot_caption_loss_total = 0
     plot_loss_total = 0
 
     plot_losses = []
+    plot_stop_losses = []
+    plot_caption_losses = []
 
     for iter in range(1, n_iters+1):
         random.shuffle(pairs)
         dataset_index, batch_index, dataset_size = 0, 0, len(pairs)
         while dataset_index + batch_size < dataset_size:
-            training_pairs = [variablesFromPair(lang, pairs[dataset_index+i]) for i in range(batch_size)]
+            training_pairs = [variables_from_pair(lang, pairs[dataset_index+i]) for i in range(batch_size)]
 
             dataset_index += batch_size
             batch_index += 1
 
             input_variables = [p[0] for p in training_pairs]
-            target_variables = [p[1] for p in training_pairs]
+            cap_target_variables = [p[1] for p in training_pairs]
+            stop_target_variables = [p[2] for p in training_pairs]
 
-            loss = train(input_variables, target_variables, encoder, decoder, encoder_optimizer, decoder_optimizer, criterion)
+            stop_loss, caption_loss = train(input_variables, cap_target_variables, stop_target_variables, encoder, sent_decoder, word_decoder,
+                         encoder_optimizer, sent_decoder_optimizer, word_decoder_optimizer, criterion, config)   # TODO
+            loss = stop_loss + caption_loss
             print_loss_total += loss
+            print_stop_loss_total += stop_loss
+            print_caption_loss_total += caption_loss
+
+            plot_stop_loss_total += stop_loss
+            plot_caption_loss_total += caption_loss
             plot_loss_total += loss
 
             if batch_index % print_every == 0:
                 print_loss_avg = print_loss_total / print_every
-                bleu = evaluateRandomly(encoder, decoder, config.StoreRoot)
-                print('%s (%d %d%%) %.4f; bleu = %.4f' % (timeSince(start, dataset_index / dataset_size), dataset_index, dataset_index / dataset_size * 100, print_loss_avg, bleu))
-                print_loss_total = 0
-                displayRandomly(encoder, decoder)
+                print_stop_loss_avg = print_stop_loss_total / print_every
+                print_caption_loss_avg = print_caption_loss_total / print_every
 
+                bleu = evaluate_randomly(encoder, sent_decoder, word_decoder, config.StoreRoot)
+
+                print('%s (%d %d%%) loss = %.3f, stop_loss = %.3f, caption_loss = %.3f; bleu = %.4f' % (time_since(start, dataset_index / dataset_size), dataset_index, dataset_index / dataset_size * 100,
+                                                          print_loss_avg, print_stop_loss_avg, print_caption_loss_avg, bleu))
+
+                print_loss_total, print_stop_loss_total, print_caption_loss_total = 0, 0, 0
+
+                display_randomly(encoder, sent_decoder, word_decoder) # TODO
+                save_model(encoder, sent_decoder, word_decoder, config.StoreRoot) # TODO
 
             if batch_index % plot_every == 0:
                 plot_loss_avg = plot_loss_total / plot_every
-                plot_losses.append(plot_loss_avg)
-                plot_loss_total = 0
+                plot_stop_loss_avg = plot_stop_loss_total / plot_every
+                plot_caption_loss_avg = plot_caption_loss_total /plot_every
 
-    showPlot(plot_losses)
+                plot_losses.append(plot_loss_avg)
+                plot_stop_losses.append(plot_stop_loss_avg)
+                plot_caption_losses.append(plot_caption_loss_avg)
+
+                plot_loss_total = 0
+                plot_stop_loss_total = 0
+                plot_caption_loss_total = 0
+
+    show_plot(plot_losses, name="loss")
+    show_plot(plot_stop_losses, name="stop_loss")
+    show_plot(plot_caption_losses, name="caption_loss")
+
 
 # predict the caption for an image
 def evaluate(encoder, decoder, imagepath, max_length=50):
-    input_variable = variableFromImagePath(imagepath)
+    input_variable = variable_from_image_path(imagepath)
 
     im_embed = encoder(input_variable)
 
@@ -363,8 +444,9 @@ def evaluate(encoder, decoder, imagepath, max_length=50):
 
     return decoded_words
 
+
 # randomly choose n images and predict their captions, store the resulted image
-def evaluateRandomly(encoder, decoder, store_dir, n=10):
+def evaluate_randomly(encoder, decoder, store_dir, n=10):
     store_path = os.path.join(store_dir, 'evaluation')
     if not os.path.exists(store_path):
         os.mkdir(store_path)
@@ -387,7 +469,8 @@ def evaluateRandomly(encoder, decoder, store_dir, n=10):
         plt.savefig(os.path.join(store_path, str(i)+'.png'))
     return bleu / n
 
-def displayRandomly(encoder, decoder):
+
+def display_randomly(encoder, decoder):
     pair = random.choice(pairs)
     truth_cap = pair[1]
     print("Truth: ", truth_cap)
@@ -425,6 +508,17 @@ if __name__ == '__main__':
                         metavar='path/to/store/models',
                         help="Store model")
     args = parser.parse_args()
+    print("Image Dataset: ", args.im)
+    print("Caption Dataset: ", args.cap)
+    print("Store root: ", args.store_root)
+
+    print("\nRead Captions....")
+    pairs = read_captions(args.cap, args.im)
+    lang = prepare_dict(pairs)
+    stat_lang(lang)
+    print("Training samples: ", len(pairs))
+    random.shuffle(pairs)
+    stat_captions(pairs)
 
 
     class IUChest_Config(Config):
@@ -434,31 +528,27 @@ if __name__ == '__main__':
         MAX_SENT_NUM = 20
         MAX_WORD_NUM = 45
 
+        # dictionary size
+        DICT_SIZE = len(lang)
+
+        def __int__(self):
+            super(IUChest_Config, self).__init__()
 
     config = IUChest_Config()
+    config.display()
 
-    pairs = readCaptions(args.cap, args.im)
-    lang = prepareDict(pairs)
-    stat_lang(lang)
-    print("Training samples: ", len(pairs))
-    random.shuffle(pairs)
-
-    stat_captions(pairs)
-
-    print(variablesFromPair(lang, pairs[0]))
-    input()
-
+    print("Create model...")
     encoder = Encoder(config)
-    decoder = Decoder(lang.n_words, config)
+    sent_decoder = SentDecoder(config)
+    word_decoder = WordDecoder(config)
     if torch.cuda.is_available():
         encoder = encoder.cuda()
-        decoder = decoder.cuda()
+        sent_decoder = sent_decoder.cuda()
+        word_decoder = word_decoder.cuda()
 
-    trainIters(encoder, decoder, config, 500, print_every=10, plot_every=10)
-    words = evaluate(encoder, decoder, config.TestImagePath)
-    for w in words:
-        print(w, end=' ')
+    print("--------Train--------")
+    train_iters(encoder, sent_decoder, word_decoder, config, 500, print_every=10, plot_every=10)
 
-    # save the model
-    torch.save(encoder.state_dict(), os.path.join(args.store_root, "encoder"))
-    torch.save(decoder.state_dict(), os.path.join(args.store_root, "decoder"))
+    print("--------Evaluate--------")
+    sentences = evaluate(encoder, sent_decoder, word_decoder, config.TestImagePath)
+    print('. '.join([' '.join(sent) for sent in sentences]))
