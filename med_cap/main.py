@@ -142,7 +142,7 @@ class Encoder(torch.nn.Module):
         super(Encoder, self).__init__()
         self.embedding_size = config.IM_EmbeddingSize
 
-        self.vgg = M.vgg11(pretrained=False)
+        self.vgg = M.vgg11(pretrained=True)
         shape = config.FeatureShape
         self.linear = torch.nn.Linear(in_features=(shape[0] * shape[1] * shape[2]), out_features=self.embedding_size)
 
@@ -248,15 +248,8 @@ def showPlot(points):
     plt.plot(points)
     fig.savefig('loss_tendency.png')
 
-def save_model(encoder, decoder, store_root, info):
-    print('saving model...')
-    iter, bleu = info
-    # save the model
-    torch.save(encoder.state_dict(), os.path.join(store_root, 'encoder'))#'_'.join(["encoder", str(iter), '{:.3f}'.format(bleu)])))
-    torch.save(decoder.state_dict(), os.path.join(store_root, 'decoder'))#'_'.join(["decoder", str(iter), '{:.3f}'.format(bleu)])))
-    print('done')
 
-def trainIters(encoder, decoder, config, epoch, batch_size=4, print_every=1, plot_every=100):
+def trainIters(encoder, decoder, config, n_iters, batch_size=4, print_every=10, plot_every=100):
 
     encoder_optimizer = torch.optim.SGD(params=encoder.parameters(), lr=config.LR, momentum=config.Momentum)
     decoder_optimizer = torch.optim.SGD(params=decoder.parameters(), lr=config.LR, momentum=config.Momentum)
@@ -269,7 +262,7 @@ def trainIters(encoder, decoder, config, epoch, batch_size=4, print_every=1, plo
 
     plot_losses = []
 
-    for iter in range(1, epoch+1):
+    for iter in range(1, n_iters+1):
         random.shuffle(pairs)
         dataset_index, batch_index, dataset_size = 0, 0, len(pairs)
         while dataset_index + batch_size < dataset_size:
@@ -285,19 +278,13 @@ def trainIters(encoder, decoder, config, epoch, batch_size=4, print_every=1, plo
             print_loss_total += loss
             plot_loss_total += loss
 
-            if batch_index % print_every == 0:
+            if dataset_index % print_every == 0:
                 print_loss_avg = print_loss_total / print_every
                 bleu = evaluateRandomly(encoder, decoder, config.StoreRoot)
                 print('%s (%d %d%%) %.4f; bleu = %.4f' % (timeSince(start, dataset_index / dataset_size), dataset_index, dataset_index / dataset_size * 100, print_loss_avg, bleu))
                 print_loss_total = 0
                 displayRandomly(encoder, decoder)
-<<<<<<< HEAD
                 save_model(encoder, decoder, config.StoreRoot, (iter, bleu))
-
-=======
-
-
->>>>>>> b127597b519a7abb03239b3b46a7008983f870fb
             if batch_index % plot_every == 0:
                 plot_loss_avg = plot_loss_total / plot_every
                 plot_losses.append(plot_loss_avg)
@@ -334,34 +321,27 @@ def evaluate(encoder, decoder, imagepath, max_length=50):
     return decoded_words
 
 # randomly choose n images and predict their captions, store the resulted image
-def evaluateRandomly(encoder, decoder, store_dir, n=50, n_save_image=10):
+def evaluateRandomly(encoder, decoder, store_dir, n=10):
     store_path = os.path.join(store_dir, 'evaluation')
     if not os.path.exists(store_path):
         os.mkdir(store_path)
 
-    sampled_pairs = [random.choice(pairs) for _ in range(n)]
-    random.shuffle(sampled_pairs)
-
     from nltk.translate.bleu_score import sentence_bleu
     bleu = 0
     for i in range(n):
-        pair = sampled_pairs[i]
+        pair = random.choice(pairs)
         im = np.array(Image.open(pair[0]))
         truth_cap = pair[1]
         pred_cap = evaluate(encoder, decoder, pair[0])
         bleu += sentence_bleu([truth_cap.split(' ')], pred_cap)
 
-        if i < n_save_image:
-            plt.figure()
-            fig, ax = plt.subplots()
+        plt.figure()
+        fig, ax = plt.subplots()
 
-            plt.imshow(im)
-            plt.title('%s\nGT:%s' % (truth_cap, pred_cap))
-            plt.axis('off')
-            plt.savefig(os.path.join(store_path, str(i) + '.png'))
-
-            plt.close(fig)
-
+        plt.imshow(im)
+        plt.title('%s\nGT:%s' % (truth_cap, pred_cap))
+        plt.axis('off')
+        plt.savefig(os.path.join(store_path, str(i)+'.png'))
     return bleu / n
 
 def displayRandomly(encoder, decoder):
@@ -392,20 +372,13 @@ torch.manual_seed(1)
 if __name__ == '__main__':
     import argparse
     parser = argparse.ArgumentParser(description="Medical Captioning")
-<<<<<<< HEAD
     parser.add_argument('--im', required=False, default='/Users/luzhoutao/courses/毕业论文/IU Chest X-Ray/NLMCXR_png', #'/mnt/md1/lztao/dataset/IU_Chest_XRay/NLMCXR_png',
                         metavar="path/to/image/dataset",
                         help="The image dataset")
     parser.add_argument('--cap', required=False, default='/Users/luzhoutao/courses/毕业论文/IU Chest X-Ray/findings.txt', #"mnt/md1/lztao/dataset/IU_Chest_XRay/findings.txt",
-=======
-    parser.add_argument('--im', required=False, default='/Users/luzhoutao/courses/毕业论文/IU Chest X-Ray/NLMCXR_png',
-                        metavar="path/to/image/dataset",
-                        help="The image dataset")
-    parser.add_argument('--cap', required=False, default="/Users/luzhoutao/courses/毕业论文/IU Chest X-Ray/findings.txt",
->>>>>>> b127597b519a7abb03239b3b46a7008983f870fb
                         metavar='path/to/findings',
                         help="The medical image captions")
-    parser.add_argument('--store-root', required=False, default='/Users/luzhoutao/courses/毕业论文/IU Chest X-Ray/MedCap/checkpoints', #"/mnt/md1/lztao/models/med_cap",
+    parser.add_argument('--store-root', required=False, default="/mnt/md1/lztao/models/med_cap",
                         metavar='path/to/store/models',
                         help="Store model")
     args = parser.parse_args()
@@ -421,31 +394,24 @@ if __name__ == '__main__':
 
     config = IUChest_Config()
 
-    print("Loading dataset...")
     pairs = readCaptions(args.cap, args.im)
     lang = prepareDict(pairs)
     stat_lang(lang)
     print("Training samples: ", len(pairs))
     random.shuffle(pairs)
 
-<<<<<<< HEAD
     print("Create model...")
-=======
-    stat_captions(pairs)
-
-    print(variablesFromPair(lang, pairs[0]))
-    input()
-
->>>>>>> b127597b519a7abb03239b3b46a7008983f870fb
     encoder = Encoder(config)
     decoder = Decoder(lang.n_words, config)
     if torch.cuda.is_available():
         encoder = encoder.cuda()
         decoder = decoder.cuda()
 
-    print("------Train-----")
-    trainIters(encoder, decoder, config, 100, batch_size=4, print_every=1, plot_every=10)
-    print("------Evaluate----")
+    trainIters(encoder, decoder, config, 500, print_every=10, plot_every=10)
     words = evaluate(encoder, decoder, config.TestImagePath)
     for w in words:
         print(w, end=' ')
+
+    # save the model
+    torch.save(encoder.state_dict(), os.path.join(args.store_root, "encoder"))
+    torch.save(decoder.state_dict(), os.path.join(args.store_root, "decoder"))
