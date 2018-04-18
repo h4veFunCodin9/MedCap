@@ -156,9 +156,42 @@ class SentDecoder(torch.nn.Module):
     def __init__(self, input_size, config):
         super(SentDecoder, self).__init__()
         self.hidden_size = config.SentLSTM_HiddenSize
+        self.topic_size = config.TopicSize
+        # context vector for each time step
+        self.ctx_im_W = torch.nn.Linear(input_size, self.hidden_size)
+        self.ctx_h_W = torch.nn.Linear(self.hidden_size, self.hidden_size)
+        # RNN unit
+        self.gru = torch.nn.GRU(self.hidden_size, self.hidden_size)
+        # topic output
+        self.topic_h_W = torch.nn.Linear(self.hidden_size, self.topic_size)
+        self.topic_ctx_W = torch.nn.Linear(self.hidden_size, self.topic_size)
+        # stop distribution output
+        self.stop_h_W = torch.nn.Linear(self.hidden_size, self.hidden_size)
+        self.stop_prev_h_W = torch.nn.Linear(self.hidden_size, self.hidden_size)
+        self.stop_W = torch.nn.Linear(self.hidden_size, 1)
 
-        self.ctx_im_W = torch.nn.Linear(input_size, config.SentLSTM_HiddenSize)
-        self.ctx_topic_W = torch.nn.Linear(config.TopicSize, )
+    def forward(self, input, hidden):
+        x = input
+        # generate current context vector
+        ctx = self.ctx_im_W(x) + self.ctx_h_W(hidden)
+        ctx = F.tanh(ctx)
+        # run RNN
+        prev_hidden = hidden
+        output, hidden = self.gru(ctx, hidden)
+        output = output[0]
+        # predict topic vector
+        topic = self.topic_h_W(output) + self.topic_ctx_W(ctx)
+        topic = F.tanh(topic)
+        # predict stop distribution
+        stop = self.stop_h_W(output) + self.stop_prev_h_W(prev_hidden)
+        stop = F.tanh(stop)
+        stop = self.stop_W(stop)
+
+        return topic, stop
+
+class WordDecoder(torch.nn.Module):
+    def __init__(self, config):
+        super(WordDecoder, self).__init__()
 
 class Decoder(torch.nn.Module):
     def __init__(self, input_size, config):
