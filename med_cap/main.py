@@ -12,7 +12,7 @@ import numpy as np
 import unicodedata
 import re, random
 import time, math
-import os
+import os, sys
 
 import skimage.transform as T
 
@@ -130,7 +130,7 @@ class Encoder(torch.nn.Module):
         super(Encoder, self).__init__()
         self.embedding_size = config.IM_EmbeddingSize
 
-        self.vgg = M.vgg11(pretrained=False)
+        self.vgg = M.vgg11(pretrained=True)
         shape = config.FeatureShape
         self.linear = torch.nn.Linear(in_features=(shape[0] * shape[1] * shape[2]), out_features=self.embedding_size)
 
@@ -235,6 +235,8 @@ def showPlot(points):
     ax.yaxis.set_major_locator(loc)
     plt.plot(points)
     fig.savefig('loss_tendency.png')
+    plt.clf()
+    plt.close(fig)
 
 
 def trainIters(encoder, decoder, config, n_iters, batch_size=4, print_every=10, plot_every=100):
@@ -273,10 +275,12 @@ def trainIters(encoder, decoder, config, n_iters, batch_size=4, print_every=10, 
                 print_loss_total = 0
                 displayRandomly(encoder, decoder)
                 save_model(encoder, decoder, config.StoreRoot)
+                sys.stdout.flush()
             if batch_index % plot_every == 0:
                 plot_loss_avg = plot_loss_total / plot_every
                 plot_losses.append(plot_loss_avg)
                 plot_loss_total = 0
+            
 
     showPlot(plot_losses)
 
@@ -323,13 +327,15 @@ def evaluateRandomly(encoder, decoder, store_dir, n=10):
         pred_cap = evaluate(encoder, decoder, pair[0])
         bleu += sentence_bleu([truth_cap.split(' ')], pred_cap)
 
-        plt.figure()
+        '''plt.figure()
         fig, ax = plt.subplots()
 
         plt.imshow(im)
         plt.title('%s\nGT:%s' % (truth_cap, pred_cap))
         plt.axis('off')
         plt.savefig(os.path.join(store_path, str(i)+'.png'))
+        plt.clf()
+        plt.close(fig)'''
     return bleu / n
 
 def displayRandomly(encoder, decoder):
