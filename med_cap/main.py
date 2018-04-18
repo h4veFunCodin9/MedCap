@@ -7,13 +7,12 @@ matplotlib.use('agg') # https://stackoverflow.com/questions/4706451/how-to-save-
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 
-from collections import defaultdict
 from PIL import Image
 import numpy as np
 import unicodedata
 import re, random
 import time, math
-import os, sys
+import os
 
 import skimage.transform as T
 
@@ -70,13 +69,16 @@ def readCaptions(annFile, image_root):
         if len(p_str) <= 1:
             continue
         image_id, caption = p_str.split('\t')
-        pairs.append((os.path.join(image_root, image_id+'.png'), normalizeString(caption).strip()))
+        caption = normalizeString(caption)
+        caption = [sent.strip() for sent in caption.split(' .') if len(sent.strip()) > 0]
+        pairs.append((os.path.join(image_root, image_id+'.png'), caption))
     return pairs
 
 def prepareDict(pairs):
     lang = Lang("eng")
     for pair in pairs:
-        lang.addSentence(pair[1])
+        for sent in pair[1]:
+            lang.addSentence(sent)
     print("Language Dictionary: ", lang.n_words)
     return lang
 
@@ -94,6 +96,16 @@ def stat_lang(lang):
             break
     print(num, 'words take up 99.5% occurrence.')
 
+# find max number of sentences; find max length of sentences
+def stat_captions(pairs):
+    w_max, s_max = 0, 0
+    for path, caption in pairs:
+        s_max = s_max if len(caption) < s_max else len(caption)
+        for sent in caption:
+            w_max = w_max if len(sent.split(' ')) < w_max else len(sent.split(' '))
+    print("Max number of sentences: ", s_max)
+    print("Max length of sentences: ", w_max)
+
 
 '''
 Model: Encoder and Decoder
@@ -110,9 +122,12 @@ def variableFromImagePath(image_path):
     return data
 
 def variableFromCaption(lang, cap):
-    indices = [lang.word2idx[w] for w in cap.split(' ')]
-    indices.append(EOS_INDEX)
-    indices = torch.autograd.Variable(torch.LongTensor(indices)).view(-1, 1)
+    indices = [[lang.word2idx[w] for w in sent.split(' ')]for sent in cap]
+    max_len = max([len(sent) for sent in indices])
+    # append End_Of_Sequence token; increase to the same size
+    for sent in indices:
+        sent.extend([EOS_INDEX]*(max_len-len(sent)+1))
+    indices = torch.autograd.Variable(torch.LongTensor(indices)).view(-1, max_len+1)
     return indices.cuda() if torch.cuda.is_available() else indices
 
 def variablesFromPair(lang, pair):
@@ -135,6 +150,50 @@ class Encoder(torch.nn.Module):
         feature = self.vgg.features(x) # IU Chest X-ray image: [1, 512, 16, 16]
         embedding = self.linear(feature.view(-1))
         return embedding.view(1, -1)
+
+# TODO
+class SentDecoder(torch.nn.Module):
+    def __init__(self, input_size, config):
+        super(SentDecoder, self).__init__()
+        self.hidden_size = config.SentLSTM_HiddenSize
+        self.topic_size = config.TopicSize
+        # context vector for each time step
+        self.ctx_im_W = torch.nn.Linear(input_size, self.hidden_size)
+        self.ctx_h_W = torch.nn.Linear(self.hidden_size, self.hidden_size)
+        # RNN unit
+        self.gru = torch.nn.GRU(self.hidden_size, self.hidden_size)
+        # topic output
+        self.topic_h_W = torch.nn.Linear(self.hidden_size, self.topic_size)
+        self.topic_ctx_W = torch.nn.Linear(self.hidden_size, self.topic_size)
+        # stop distribution output
+        self.stop_h_W = torch.nn.Linear(self.hidden_size, self.hidden_size)
+        self.stop_prev_h_W = torch.nn.Linear(self.hidden_size, self.hidden_size)
+        self.stop_W = torch.nn.Linear(self.hidden_size, 1)
+
+    def forward(self, input, hidden):
+        x = input
+        # generate current context vector
+        ctx = self.ctx_im_W(x) + self.ctx_h_W(hidden)
+        ctx = F.tanh(ctx)
+        # run RNN
+        prev_hidden = hidden
+        output, hidden = self.gru(ctx, hidden)
+        output = output[0]
+        # predict topic vector
+        topic = self.topic_h_W(output) + self.topic_ctx_W(ctx)
+        topic = F.tanh(topic)
+        # predict stop distribution
+        stop = self.stop_h_W(output) + self.stop_prev_h_W(prev_hidden)
+        stop = F.tanh(stop)
+        stop = self.stop_W(stop)
+
+        return topic, stop
+
+class WordDecoder(torch.nn.Module):
+    def __init__(self, config):
+        super(WordDecoder, self).__init__()
+
+
 
 class Decoder(torch.nn.Module):
     def __init__(self, input_size, config):
@@ -165,13 +224,14 @@ def train(input_variables, target_variables, encoder, decoder, encoder_optimizer
 
     loss = 0
     total_len = 0
-    
+
     def one_pass(input_variable, target_variable):
         im_embedding = encoder(input_variable) # [1, HiddenSize]
 
         target_len = target_variable.size()[0]
 
-        loss = 0
+        sent_loss = 0
+        stop_loss = 0
 
         decoder_hidden = im_embedding.view(1, 1, -1)
         decoder_input = torch.autograd.Variable(torch.LongTensor([[SOS_INDEX, ]]))
@@ -181,12 +241,12 @@ def train(input_variables, target_variables, encoder, decoder, encoder_optimizer
         if teacher_forcing:
             for di in range(target_len):
                 decoder_output, decoder_hidden = decoder(decoder_input, decoder_hidden)
-                loss += criterion(decoder_output, target_variable[di])
+                sent_loss += criterion(decoder_output, target_variable[di])
                 decoder_input = target_variable[di]
         else:
             for di in range(target_len):
                 decoder_output, decoder_hidden = decoder(decoder_input, decoder_hidden)
-                loss += criterion(decoder_output, target_variable[di])
+                sent_loss += criterion(decoder_output, target_variable[di])
                 topv, topi = decoder_output.data.topk(1)
                 ni = topi[0][0]
 
@@ -194,7 +254,7 @@ def train(input_variables, target_variables, encoder, decoder, encoder_optimizer
                 decoder_input = decoder_input.cuda() if torch.cuda.is_available() else decoder_input
                 if ni == EOS_INDEX:
                     break
-        return loss, target_len
+        return sent_loss, target_len
     
     batch_size = len(target_variables)
     for i in range(batch_size):
@@ -275,8 +335,13 @@ def trainIters(encoder, decoder, config, epoch, batch_size=4, print_every=1, plo
                 print('%s (%d %d%%) %.4f; bleu = %.4f' % (timeSince(start, dataset_index / dataset_size), dataset_index, dataset_index / dataset_size * 100, print_loss_avg, bleu))
                 print_loss_total = 0
                 displayRandomly(encoder, decoder)
+<<<<<<< HEAD
                 save_model(encoder, decoder, config.StoreRoot, (iter, bleu))
 
+=======
+
+
+>>>>>>> b127597b519a7abb03239b3b46a7008983f870fb
             if batch_index % plot_every == 0:
                 plot_loss_avg = plot_loss_total / plot_every
                 plot_losses.append(plot_loss_avg)
@@ -371,10 +436,17 @@ torch.manual_seed(1)
 if __name__ == '__main__':
     import argparse
     parser = argparse.ArgumentParser(description="Medical Captioning")
+<<<<<<< HEAD
     parser.add_argument('--im', required=False, default='/Users/luzhoutao/courses/毕业论文/IU Chest X-Ray/NLMCXR_png', #'/mnt/md1/lztao/dataset/IU_Chest_XRay/NLMCXR_png',
                         metavar="path/to/image/dataset",
                         help="The image dataset")
     parser.add_argument('--cap', required=False, default='/Users/luzhoutao/courses/毕业论文/IU Chest X-Ray/findings.txt', #"mnt/md1/lztao/dataset/IU_Chest_XRay/findings.txt",
+=======
+    parser.add_argument('--im', required=False, default='/Users/luzhoutao/courses/毕业论文/IU Chest X-Ray/NLMCXR_png',
+                        metavar="path/to/image/dataset",
+                        help="The image dataset")
+    parser.add_argument('--cap', required=False, default="/Users/luzhoutao/courses/毕业论文/IU Chest X-Ray/findings.txt",
+>>>>>>> b127597b519a7abb03239b3b46a7008983f870fb
                         metavar='path/to/findings',
                         help="The medical image captions")
     parser.add_argument('--store-root', required=False, default='/Users/luzhoutao/courses/毕业论文/IU Chest X-Ray/MedCap/checkpoints', #"/mnt/md1/lztao/models/med_cap",
@@ -383,11 +455,15 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
 
-    class MyConfig(Config):
+    class IUChest_Config(Config):
         StoreRoot = args.store_root
 
+        # the maximum number of sentences and maximum number of words per sentence
+        MAX_SENT_NUM = 20
+        MAX_WORD_NUM = 45
 
-    config = MyConfig()
+
+    config = IUChest_Config()
 
     print("Loading dataset...")
     pairs = readCaptions(args.cap, args.im)
@@ -396,7 +472,15 @@ if __name__ == '__main__':
     print("Training samples: ", len(pairs))
     random.shuffle(pairs)
 
+<<<<<<< HEAD
     print("Create model...")
+=======
+    stat_captions(pairs)
+
+    print(variablesFromPair(lang, pairs[0]))
+    input()
+
+>>>>>>> b127597b519a7abb03239b3b46a7008983f870fb
     encoder = Encoder(config)
     decoder = Decoder(lang.n_words, config)
     if torch.cuda.is_available():

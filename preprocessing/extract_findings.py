@@ -1,3 +1,7 @@
+#######################################################
+# Extract findings for IU Chest X-Ray dataset
+#######################################################
+
 import xml.etree.ElementTree as ET
 import os
 
