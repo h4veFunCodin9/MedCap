@@ -11,7 +11,7 @@ import os
 
 import skimage.transform as T
 
-from .config import Config
+from config import Config
 
 import matplotlib
 matplotlib.use('agg') # https://stackoverflow.com/questions/4706451/how-to-save-a-figure-remotely-with-pylab/4706614#4706614
@@ -50,7 +50,7 @@ class Lang:
         else:
             self.word2count[w] += 1
 
-    def __len(self):
+    def __len__(self):
         return self.n_words
 
 
@@ -139,13 +139,13 @@ def variable_from_caption(lang, cap, max_sent_num):
         sent.extend([EOS_INDEX] * (max_len - len(sent) + 1))
 
     indices = torch.autograd.Variable(torch.LongTensor(indices)).view(-1, max_len + 1)
-    stop = torch.autograd.Variable(torch.LongTensor(stop)).view(-1, max_sent_num)
+    stop = torch.autograd.Variable(torch.LongTensor(stop)).view(-1, 1)
     return indices.cuda() if torch.cuda.is_available() else indices, stop.cuda() if torch.cuda.is_available() else stop
 
 
-def variables_from_pair(lang, pair):
+def variables_from_pair(lang, pair, max_sent_num):
     image_var = variable_from_image_path(pair[0])
-    cap_var, stop_var = variable_from_caption(lang, pair[1])
+    cap_var, stop_var = variable_from_caption(lang, pair[1], max_sent_num)
     return image_var, cap_var, stop_var
 
 
@@ -157,7 +157,7 @@ class Encoder(torch.nn.Module):
         super(Encoder, self).__init__()
         self.embedding_size = config.IM_EmbeddingSize
 
-        self.vgg = M.vgg11(pretrained=True)
+        self.vgg = M.vgg11(pretrained=False)
         shape = config.FeatureShape
         self.linear = torch.nn.Linear(in_features=(shape[0] * shape[1] * shape[2]), out_features=self.embedding_size)
 
@@ -184,7 +184,7 @@ class SentDecoder(torch.nn.Module):
         # stop distribution output
         self.stop_h_W = torch.nn.Linear(self.hidden_size, self.hidden_size)
         self.stop_prev_h_W = torch.nn.Linear(self.hidden_size, self.hidden_size)
-        self.stop_W = torch.nn.Linear(self.hidden_size, 1)
+        self.stop_W = torch.nn.Linear(self.hidden_size, 2)
 
     def forward(self, input, hidden):
         x = input
@@ -228,7 +228,7 @@ class WordDecoder(torch.nn.Module):
         return output, hidden
 
 
-def save_model(encoder, decoder, store_root)
+def save_model(encoder, decoder, store_root):
     # save the model
     print("Saving models...")
     torch.save(encoder.state_dict(), os.path.join(store_root, "encoder"))
@@ -254,17 +254,37 @@ def train(input_variables, cap_target_variables, stop_target_variables, encoder,
     def one_pass(input_variable, cap_target_variable, stop_target_variable):
         im_embedding = encoder(input_variable) # [1, HiddenSize]
 
-        target_len = target_variable.size()[0]
+        #target_len = target_variable.size()[0]
+        sent_num = cap_target_variable.size()[0]
 
         cap_loss = 0
         stop_loss = 0
 
         # sentence LSTM
         sent_decoder_hidden = sent_decoder.init_hidden()
-        sent_decoder_input = im_embedding
+        sent_decoder_input = im_embedding  # not changed
 
         # TODO
         # TODO
+        sent_topics = []
+        for sent_i in range(config.MAX_SENT_NUM):
+            sent_decoder_topic, sent_decoder_stop, sent_decoder_hidden = sent_decoder(sent_decoder_input, sent_decoder_hidden)
+            sent_topics.append(sent_decoder_topic)
+
+            stop_loss += criterion(sent_decoder_stop[0], stop_target_variable[sent_i])
+
+        for sent_i in range(sent_num):
+            sent_target_variable = cap_target_variable[sent_i]
+
+            word_num = sent_target_variable.size()[0]
+
+            word_decoder_hidden = sent_topics[sent_i]
+            word_decoder_input = torch.autograd.Variable(torch.LongTensor([[SOS_INDEX, ]]))
+            word_decoder_input = word_decoder_input.cuda() if torch.cuda.is_avaiable() else word_decoder_input
+
+            teacher_forcing = True if random.random() < 0.5 else False
+            if teacher_forcing:
+                for word_i in range()
 
         decoder_hidden = im_embedding.view(1, 1, -1)
         decoder_input = torch.autograd.Variable(torch.LongTensor([[SOS_INDEX, ]]))
@@ -363,7 +383,7 @@ def train_iters(encoder, sent_decoder, word_decoder, config, n_iters, batch_size
         random.shuffle(pairs)
         dataset_index, batch_index, dataset_size = 0, 0, len(pairs)
         while dataset_index + batch_size < dataset_size:
-            training_pairs = [variables_from_pair(lang, pairs[dataset_index+i]) for i in range(batch_size)]
+            training_pairs = [variables_from_pair(lang, pairs[dataset_index+i], config.MAX_SENT_NUM) for i in range(batch_size)]
 
             dataset_index += batch_size
             batch_index += 1
@@ -519,7 +539,6 @@ if __name__ == '__main__':
     print("Training samples: ", len(pairs))
     random.shuffle(pairs)
     stat_captions(pairs)
-
 
     class IUChest_Config(Config):
         StoreRoot = args.store_root

@@ -38,6 +38,6 @@ class Config(object):
     def display(self):
         print("Configuration: ")
         for a in dir(self):
-            if not callable(getattr(self, a)):
+            if not callable(getattr(self, a)) and not a.startswith("__"):
                 print("{:30} {}".format(a, getattr(self, a)))
         print("\n\n")
