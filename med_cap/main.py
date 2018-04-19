@@ -248,6 +248,8 @@ def load_model(encoder, sent_decoder, word_decoder, load_root)
     word_decoder.load_state_dict(torch.load(word_decoder_path))
     print("Loaded.")
 
+    return encoder, sent_decoder, word_decoder
+
 
 '''
 Train and evaluate functionality
