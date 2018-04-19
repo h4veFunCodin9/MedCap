@@ -14,7 +14,7 @@ class Config(object):
     StopLoss_Weight = 0.5
     CapLoss_Weight = 0.5
 
-    # Size of topic vector
+    # Size of topic vector (should be same as the word LSTM hidden size)
     TopicSize = 512
 
     # Shape of feature map extracted from CNN
