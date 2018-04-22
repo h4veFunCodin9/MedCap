@@ -24,6 +24,12 @@ class Config(object):
     LR = 1.0e-5
     Momentum = 0.9
 
+    # Training procedure
+    NumIters = 500
+    BatchSize = 1
+    PrintFrequency = 1
+    PlotFrequency = 1
+
     # Path for display example
     TestImagePath = '/mnt/md1/lztao/dataset/IU_Chest_XRay/NLMCXR_png/CXR1100_IM-0068-1001.png'
     '''

@@ -167,7 +167,7 @@ class Encoder(torch.nn.Module):
         return embedding.view(1, -1)
 
 
-# TODO
+
 class SentDecoder(torch.nn.Module):
     def __init__(self, config):
         super(SentDecoder, self).__init__()
@@ -237,7 +237,7 @@ def save_model(encoder, sent_decoder, word_decoder, store_root):
     print("Done!")
 
 
-def load_model(encoder, sent_decoder, word_decoder, load_root)
+def load_model(encoder, sent_decoder, word_decoder, load_root):
     print("Loading models from '{}' ...".format(load_root))
     encoder_path = os.path.join(load_root, 'encoder')
     sent_decoder_path = os.path.join(load_root, 'sent_decoder')
@@ -265,6 +265,7 @@ def train(input_variables, cap_target_variables, stop_target_variables, encoder,
 
     total_sent_num, total_word_num = 0, 0
 
+    # input_variable: 1 x 3 x 512 x 512, cap_target_variable: num_sent x len_sent, stop_target_variable: max_num_sent x 1
     def _one_pass(input_variable, cap_target_variable, stop_target_variable):
         _im_embedding = encoder(input_variable) # [1, HiddenSize]
 
@@ -297,19 +298,19 @@ def train(input_variables, cap_target_variables, stop_target_variables, encoder,
 
             word_decoder_hidden = sent_topics[sent_i] # init RNN using topic vector
             word_decoder_input = torch.autograd.Variable(torch.LongTensor([[SOS_INDEX, ]]))
-            word_decoder_input = word_decoder_input.cuda() if torch.cuda.is_avaiable() else word_decoder_input
+            word_decoder_input = word_decoder_input.cuda() if torch.cuda.is_available() else word_decoder_input
 
             if teacher_forcing:
                 for word_i in range(_sent_len):
                     word_decoder_output, word_decoder_hidden = word_decoder(word_decoder_input, word_decoder_hidden)
-                    _cap_loss += criterion(word_decoder_output, sent_target_variable[word_i])
+                    _cap_loss += criterion(word_decoder_output[0], sent_target_variable[word_i])
                     word_decoder_input = sent_target_variable[word_i]
                     _word_seen_num += 1
             else:
                 for word_i in range(_sent_len):
                     word_decoder_output, word_decoder_hidden = word_decoder(word_decoder_input, word_decoder_hidden)
-                    _cap_loss += criterion(word_decoder_output, sent_target_variable[word_i])
-                    topv, topi = word_decoder_output.data.topk(1)
+                    _cap_loss += criterion(word_decoder_output[0], sent_target_variable[word_i])
+                    topv, topi = word_decoder_output[0].data.topk(1)
                     ni = topi[0][0]
 
                     word_decoder_input = torch.autograd.Variable(torch.LongTensor([[ni, ]]))
@@ -371,7 +372,12 @@ def show_plot(points, name):
     fig.savefig(name+'_tendency.png')
 
 
-def train_iters(encoder, sent_decoder, word_decoder, config, n_iters, batch_size=4, print_every=10, plot_every=100):
+def train_iters(encoder, sent_decoder, word_decoder, config):
+
+    n_iters = config.NumIters
+    batch_size = config.BatchSize
+    print_every = config.PrintFrequency
+    plot_every = config.PlotFrequency
 
     encoder_optimizer = torch.optim.SGD(params=encoder.parameters(), lr=config.LR, momentum=config.Momentum)
     sent_decoder_optimizer = torch.optim.SGD(params=sent_decoder.parameters(), lr=config.LR, momentum=config.Momentum)
@@ -424,7 +430,8 @@ def train_iters(encoder, sent_decoder, word_decoder, config, n_iters, batch_size
                 print_stop_loss_avg = print_stop_loss_total / print_every
                 print_caption_loss_avg = print_caption_loss_total / print_every
 
-                bleu = evaluate_randomly(encoder, sent_decoder, word_decoder, config.StoreRoot)
+                # TODO evaluate validation dataset
+                bleu = evaluate_randomly(encoder, sent_decoder, word_decoder, config)
 
                 print('%s (%d %d%%) loss = %.3f, stop_loss = %.3f, caption_loss = %.3f; bleu = %.4f' %
                     (time_since(start, dataset_index / dataset_size), dataset_index, dataset_index / dataset_size * 100,
@@ -433,6 +440,7 @@ def train_iters(encoder, sent_decoder, word_decoder, config, n_iters, batch_size
                 print_loss_total, print_stop_loss_total, print_caption_loss_total = 0, 0, 0
 
                 display_randomly(encoder, sent_decoder, word_decoder, config)
+                # TODO save the best model on validate dataset
                 save_model(encoder, sent_decoder, word_decoder, config.StoreRoot)
 
             if batch_index % plot_every == 0:
@@ -488,7 +496,7 @@ def evaluate(encoder, sent_decoder, word_decoder, imagepath, config):
         decoded_sentence = []
         for word_i in range(config.MAX_WORD_NUM):
             word_decoder_output, word_decoder_hidden = word_decoder(word_decoder_input, word_decoder_hidden)
-            topv, topi = word_decoder_output.data.topk(1)
+            topv, topi = word_decoder_output[0].data.topk(1)
             ni = topi[0][0]
 
             if ni == EOS_INDEX:
@@ -504,20 +512,23 @@ def evaluate(encoder, sent_decoder, word_decoder, imagepath, config):
 
 
 # randomly choose n images and predict their captions, store the resulted image
-def evaluate_randomly(encoder, sent_decoder, word_decoder, store_dir, n=10):
-    store_path = os.path.join(store_dir, 'evaluation')
+def evaluate_randomly(encoder, sent_decoder, word_decoder, config, n=1):
+    store_path = os.path.join(config.StoreRoot, 'evaluation')
     if not os.path.exists(store_path):
         os.mkdir(store_path)
 
     from nltk.translate.bleu_score import sentence_bleu
+    from functools import reduce
     bleu = 0
     for i in range(n):
         pair = random.choice(pairs)
         im = np.array(Image.open(pair[0]))
         truth_cap = pair[1]
-        pred_cap = evaluate(encoder, sent_decoder, word_decoder, pair[0])
-        bleu += sentence_bleu([truth_cap.split(' ')], pred_cap)
-        # TODO: Using pycocoevalcap ( https://github.com/kelvinxu/arctic-captions/blob/master/metrics.py)
+        pred_cap = evaluate(encoder, sent_decoder, word_decoder, pair[0], config)
+        #print(' '.join(truth_cap).split(' '))
+        #print(reduce(lambda x, y: x + y, pred_cap))
+        bleu += sentence_bleu(' '.join(truth_cap).split(' '), reduce(lambda x, y: x + y, pred_cap))
+        # TODO: Using pycocoevalcap ( https://github.com/kelvinxu/arctic-captions/blob/master/metrics.py) -> python 3
 
 
         plt.figure()
@@ -534,24 +545,14 @@ def display_randomly(encoder, sent_decoder, word_decoder, config):
     pair = random.choice(pairs)
     truth_cap = pair[1]
     print("Truth: ", '. '.join(truth_cap))
-    pred_cap = evaluate(encoder, sent_decoder, word_decoder, pair[0])
+    pred_cap = evaluate(encoder, sent_decoder, word_decoder, pair[0], config)
     print("Prediction:", '. '.join([' '.join(sent) for sent in pred_cap]))
 
-'''
-Train and evaluate
-'''
-'''import argparse
-parser = argparse.ArgumentParser(description="parse command line arguments")
-parser.add_argument('--lr', type=float, default=1.0e-3)
-
-args = parser.parse_args()
-'''
 #########################
 # Configuration
 ########################
 
 torch.manual_seed(1)
-
 
 if __name__ == '__main__':
     import argparse
@@ -559,12 +560,16 @@ if __name__ == '__main__':
     parser.add_argument('--im', required=False, default='/Users/luzhoutao/courses/毕业论文/IU Chest X-Ray/NLMCXR_png',
                         metavar="path/to/image/dataset",
                         help="The image dataset")
+    # TODO add trainval and test dataset
     parser.add_argument('--cap', required=False, default="/Users/luzhoutao/courses/毕业论文/IU Chest X-Ray/findings.txt",
                         metavar='path/to/findings',
                         help="The medical image captions")
-    parser.add_argument('--store-root', required=False, default="/mnt/md1/lztao/models/med_cap",
+    parser.add_argument('--store-root', required=False, default='/Users/luzhoutao/courses/毕业论文/IU Chest X-Ray/MedCap/checkpoints', #"/mnt/md1/lztao/models/med_cap",
                         metavar='path/to/store/models',
                         help="Store model")
+    parser.add_argument('--load-root', required=False, default='.',
+                        metavar='path/to/saved/models',
+                        help="the path to models for restore.")
     args = parser.parse_args()
     print("Image Dataset: ", args.im)
     print("Caption Dataset: ", args.cap)
@@ -603,8 +608,21 @@ if __name__ == '__main__':
         sent_decoder = sent_decoder.cuda()
         word_decoder = word_decoder.cuda()
 
+    if os.path.isfile(args.load_root):
+        print("Loading model from {}.".format(args.load_root))
+        try:
+            load_model(encoder, sent_decoder, word_decoder, args.load_root)
+            print("Loaded!")
+        except KeyError:
+            print("The model file is invalid. \nExit!")
+            import sys
+            sys.exit(0)
+
+
     print("--------Train--------")
-    train_iters(encoder, sent_decoder, word_decoder, config, 500, print_every=10, plot_every=10)
+    train_iters(encoder, sent_decoder, word_decoder, config)
+
+    # TODO test on test dataset when training is finished.
 
     print("--------Evaluate--------")
     sentences = evaluate(encoder, sent_decoder, word_decoder, config.TestImagePath)
