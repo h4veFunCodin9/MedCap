@@ -81,6 +81,13 @@ def read_captions(annFile, image_root):
         pairs.append((os.path.join(image_root, image_id+'.png'), caption))
     return pairs
 
+def split_train_val(pairs, val_prop=0.1):
+    # return train pairs and val pairs
+    num = len(pairs)
+    import random
+    random.shuffle(pairs)
+    return pairs[int(num*val_prop):], pairs[:int(num*val_prop)]
+
 
 def prepare_dict(pairs):
     lang = Lang("eng")
@@ -228,12 +235,12 @@ class WordDecoder(torch.nn.Module):
         return output, hidden
 
 
-def save_model(encoder, sent_decoder, word_decoder, store_root):
+def save_model(encoder, sent_decoder, word_decoder, store_root, suffix=""):
     # save the model
     print("Saving models...")
-    torch.save(encoder.state_dict(), os.path.join(store_root, "encoder"))
-    torch.save(sent_decoder.state_dict(), os.path.join(store_root, "sent_decoder"))
-    torch.save(word_decoder.state_dict(), os.path.join(store_root, "word_decoder"))
+    torch.save(encoder.state_dict(), os.path.join(store_root, "encoder_"+suffix))
+    torch.save(sent_decoder.state_dict(), os.path.join(store_root, "sent_decoder_"+suffix))
+    torch.save(word_decoder.state_dict(), os.path.join(store_root, "word_decoder_"+suffix))
     print("Done!")
 
 
@@ -249,11 +256,9 @@ def load_model(encoder, sent_decoder, word_decoder, load_root):
     print("Loaded.")
 
 
-'''
-Train and evaluate functionality
-'''
-
-
+###################################
+# Train and evaluate functionality
+###################################
 def train(input_variables, cap_target_variables, stop_target_variables, encoder, sent_decoder, word_decoder,
           encoder_optimizer, sent_decoder_optimizer, word_decoder_optimizer, criterion, config):
 
@@ -372,7 +377,7 @@ def show_plot(points, name):
     fig.savefig(name+'_tendency.png')
 
 
-def train_iters(encoder, sent_decoder, word_decoder, config):
+def train_iters(encoder, sent_decoder, word_decoder, train_pairs, val_pairs, config):
 
     n_iters = config.NumIters
     batch_size = config.BatchSize
@@ -399,19 +404,21 @@ def train_iters(encoder, sent_decoder, word_decoder, config):
     plot_stop_losses = []
     plot_caption_losses = []
 
+    best_metrics = 0
+
     for iter in range(1, n_iters+1):
-        random.shuffle(pairs)
-        dataset_index, batch_index, dataset_size = 0, 0, len(pairs)
+        random.shuffle(train_pairs)
+        dataset_index, batch_index, dataset_size = 0, 0, len(train_pairs)
         while dataset_index + batch_size < dataset_size:
-            training_pairs = [variables_from_pair(lang, pairs[dataset_index+i], config.MAX_SENT_NUM)
+            current_pairs = [variables_from_pair(lang, train_pairs[dataset_index+i], config.MAX_SENT_NUM)
                               for i in range(batch_size)]
 
             dataset_index += batch_size
             batch_index += 1
 
-            input_variables = [p[0] for p in training_pairs]
-            cap_target_variables = [p[1] for p in training_pairs]
-            stop_target_variables = [p[2] for p in training_pairs]
+            input_variables = [p[0] for p in current_pairs]
+            cap_target_variables = [p[1] for p in current_pairs]
+            stop_target_variables = [p[2] for p in current_pairs]
 
             stop_loss, caption_loss = train(input_variables, cap_target_variables, stop_target_variables, encoder,
                                             sent_decoder, word_decoder,encoder_optimizer, sent_decoder_optimizer,
@@ -430,18 +437,15 @@ def train_iters(encoder, sent_decoder, word_decoder, config):
                 print_stop_loss_avg = print_stop_loss_total / print_every
                 print_caption_loss_avg = print_caption_loss_total / print_every
 
-                # TODO evaluate validation dataset
-                bleu = evaluate_randomly(encoder, sent_decoder, word_decoder, config)
+                bleu = evaluate_pairs(encoder, sent_decoder, word_decoder, val_pairs, config, n=10)
 
-                print('%s (%d %d%%) loss = %.3f, stop_loss = %.3f, caption_loss = %.3f; bleu = %.4f' %
+                print('%s (%d %d%%) loss = %.3f, stop_loss = %.3f, caption_loss = %.3f; val_bleu = %.4f' %
                     (time_since(start, dataset_index / dataset_size), dataset_index, dataset_index / dataset_size * 100,
                                                 print_loss_avg, print_stop_loss_avg, print_caption_loss_avg, bleu))
 
                 print_loss_total, print_stop_loss_total, print_caption_loss_total = 0, 0, 0
 
-                display_randomly(encoder, sent_decoder, word_decoder, config)
-                # TODO save the best model on validate dataset
-                save_model(encoder, sent_decoder, word_decoder, config.StoreRoot)
+                display_randomly(encoder, sent_decoder, word_decoder, val_pairs, config)
 
             if batch_index % plot_every == 0:
                 plot_loss_avg = plot_loss_total / plot_every
@@ -455,6 +459,11 @@ def train_iters(encoder, sent_decoder, word_decoder, config):
                 plot_loss_total = 0
                 plot_stop_loss_total = 0
                 plot_caption_loss_total = 0
+
+        val_metrics = evaluate_pairs(encoder, sent_decoder, word_decoder, val_pairs, config)
+        if val_metrics > best_metrics:
+            best_metrics = val_metrics
+            save_model(encoder, sent_decoder, word_decoder, config.StoreRoot, suffix='_'.join([str(iter), str(val_metrics)]))
 
     show_plot(plot_losses, name="loss")
     show_plot(plot_stop_losses, name="stop_loss")
@@ -512,16 +521,26 @@ def evaluate(encoder, sent_decoder, word_decoder, imagepath, config):
 
 
 # randomly choose n images and predict their captions, store the resulted image
-def evaluate_randomly(encoder, sent_decoder, word_decoder, config, n=1):
+def evaluate_pairs(encoder, sent_decoder, word_decoder, pairs, config, n=-1, verbose=False):
     store_path = os.path.join(config.StoreRoot, 'evaluation')
     if not os.path.exists(store_path):
         os.mkdir(store_path)
 
     from nltk.translate.bleu_score import sentence_bleu
     from functools import reduce
+    import random
+
+    random.shuffle(val_pairs)
+    if n > 0:
+        pairs = pairs[:n]
+
+    num = len(pairs)
+
     bleu = 0
-    for i in range(n):
-        pair = random.choice(pairs)
+    for i in range(num):
+        if verbose:
+            print('{}/{}\r'.format(i, num), end='')
+        pair = pairs[i]
         im = np.array(Image.open(pair[0]))
         truth_cap = pair[1]
         pred_cap = evaluate(encoder, sent_decoder, word_decoder, pair[0], config)
@@ -538,15 +557,38 @@ def evaluate_randomly(encoder, sent_decoder, word_decoder, config, n=1):
         plt.title('%s\nGT:%s' % (truth_cap, pred_cap))
         plt.axis('off')
         plt.savefig(os.path.join(store_path, str(i)+'.png'))
+    if verbose:
+        print("Done!")
     return bleu / n
 
 
-def display_randomly(encoder, sent_decoder, word_decoder, config):
-    pair = random.choice(pairs)
+def display_randomly(encoder, sent_decoder, word_decoder, val_pairs, config):
+    pair = random.choice(val_pairs)
     truth_cap = pair[1]
     print("Truth: ", '. '.join(truth_cap))
     pred_cap = evaluate(encoder, sent_decoder, word_decoder, pair[0], config)
     print("Prediction:", '. '.join([' '.join(sent) for sent in pred_cap]))
+
+
+########################
+# Metrics
+########################
+class Metrics:
+
+    def __init__(self):
+        from coco_caption.pycocoevalcap.bleu.bleu import Bleu
+        from coco_caption.pycocoevalcap.cider.cider import Cider
+        from coco_caption.pycocoevalcap.rouge.rouge import Rouge
+        from coco_caption.pycocoevalcap.meteor.meteor import Meteor
+
+        self.bleu = Bleu()
+        self.cider = Cider()
+        self.rouge = Rouge()
+        self.meteor = Meteor()
+
+
+    def compute_score(self, gts, res):
+        bleu_score = self.bleu.compute_score(gts, res)
 
 #########################
 # Configuration
@@ -560,28 +602,42 @@ if __name__ == '__main__':
     parser.add_argument('--im', required=False, default='/Users/luzhoutao/courses/毕业论文/IU Chest X-Ray/NLMCXR_png',
                         metavar="path/to/image/dataset",
                         help="The image dataset")
-    # TODO add trainval and test dataset
-    parser.add_argument('--cap', required=False, default="/Users/luzhoutao/courses/毕业论文/IU Chest X-Ray/findings.txt",
-                        metavar='path/to/findings',
-                        help="The medical image captions")
+    parser.add_argument('--trainval-cap', required=False, default="/Users/luzhoutao/courses/毕业论文/IU Chest X-Ray/trainval_findings.txt",
+                        metavar='path/to/trainval/findings',
+                        help="The medical image captions for training and validation")
+    parser.add_argument('--test-cap', required=False, default="/Users/luzhoutao/courses/毕业论文/IU Chest X-Ray/test_findings.txt",
+                        metavar="path/to/test/findings",
+                        help='The medical image captions for testing')
     parser.add_argument('--store-root', required=False, default='/Users/luzhoutao/courses/毕业论文/IU Chest X-Ray/MedCap/checkpoints', #"/mnt/md1/lztao/models/med_cap",
                         metavar='path/to/store/models',
                         help="Store model")
     parser.add_argument('--load-root', required=False, default='.',
                         metavar='path/to/saved/models',
                         help="the path to models for restore.")
+    parser.add_argument('--val-prop', required=False, default=0.1,
+                        metavar='proportionate of validation dataset')
     args = parser.parse_args()
+    print("Arguments: ")
     print("Image Dataset: ", args.im)
-    print("Caption Dataset: ", args.cap)
+    print("Caption Dataset (trainval): ", args.trainval_cap)
+    print("Caption Dataset (test): ", args.test_cap)
+    print("Validation Proportionate: ", args.val_prop)
     print("Store root: ", args.store_root)
 
     print("\nRead Captions....")
-    pairs = read_captions(args.cap, args.im)
-    lang = prepare_dict(pairs)
+    trainval_pairs = read_captions(args.trainval_cap, args.im)
+    test_pairs = read_captions(args.test_cap, args.im)
+
+    train_pairs, val_pairs = split_train_val(trainval_pairs, val_prop=args.val_prop)
+
+    lang = prepare_dict(train_pairs)
     stat_lang(lang)
-    print("Training samples: ", len(pairs))
-    random.shuffle(pairs)
-    stat_captions(pairs)
+    print("Train samples: ", len(train_pairs))
+    print("Validation samples: ", len(val_pairs))
+    print("Test samples: ", len(test_pairs))
+
+    random.shuffle(train_pairs)
+    stat_captions(train_pairs)
 
     class IUChest_Config(Config):
         StoreRoot = args.store_root
@@ -620,10 +676,12 @@ if __name__ == '__main__':
 
 
     print("--------Train--------")
-    train_iters(encoder, sent_decoder, word_decoder, config)
-
-    # TODO test on test dataset when training is finished.
+    train_iters(encoder, sent_decoder, word_decoder, train_pairs, val_pairs, config)
 
     print("--------Evaluate--------")
-    sentences = evaluate(encoder, sent_decoder, word_decoder, config.TestImagePath)
+    sentences = evaluate(encoder, sent_decoder, word_decoder, config.TestImagePath, config)
     print('. '.join([' '.join(sent) for sent in sentences]))
+
+    print("--------Test--------")
+    evaluate_pairs(encoder, sent_decoder, word_decoder, test_pairs, config, verbose=True)
+
