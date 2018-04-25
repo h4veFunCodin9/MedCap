@@ -587,7 +587,14 @@ class Metrics:
         self.meteor = Meteor()
 
 
-    def compute_score(self, gts, res):
+    def compute_score(self, truth, pred):
+        '''
+        Computer several metrics
+        :param truth: <String> the ground truth sentence
+        :param pred:  <String> predicted sentence
+        :return: score list
+        '''
+        gts = {}
         bleu_score = self.bleu.compute_score(gts, res)
 
 #########################
