@@ -404,8 +404,6 @@ def train_iters(encoder, sent_decoder, word_decoder, train_pairs, val_pairs, con
     plot_stop_losses = []
     plot_caption_losses = []
 
-    best_metrics = 0
-
     for iter in range(1, n_iters+1):
         random.shuffle(train_pairs)
         dataset_index, batch_index, dataset_size = 0, 0, len(train_pairs)
@@ -437,11 +435,19 @@ def train_iters(encoder, sent_decoder, word_decoder, train_pairs, val_pairs, con
                 print_stop_loss_avg = print_stop_loss_total / print_every
                 print_caption_loss_avg = print_caption_loss_total / print_every
 
-                bleu = evaluate_pairs(encoder, sent_decoder, word_decoder, val_pairs, config, n=10)
-
-                print('%s (%d %d%%) loss = %.3f, stop_loss = %.3f, caption_loss = %.3f; val_bleu = %.4f' %
+                metrics = evaluate_pairs(encoder, sent_decoder, word_decoder, val_pairs, config, n=10)
+                print('%s (%d %d%%) loss = %.3f, stop_loss = %.3f, caption_loss = %.3f' %
                     (time_since(start, dataset_index / dataset_size), dataset_index, dataset_index / dataset_size * 100,
-                                                print_loss_avg, print_stop_loss_avg, print_caption_loss_avg, bleu))
+                                                print_loss_avg, print_stop_loss_avg, print_caption_loss_avg), end=" ")
+                for k, v in metrics.items():
+                    if isinstance(v, list):
+                        print(k, end=": ")
+                        for vi in v:
+                            print("{:.3f}".format(vi), end=' ')
+                        print(";", end=' ')
+                    else:
+                        print(k+": {:.3f}".format(v), end=" ")
+                print("")
 
                 print_loss_total, print_stop_loss_total, print_caption_loss_total = 0, 0, 0
 
@@ -460,10 +466,18 @@ def train_iters(encoder, sent_decoder, word_decoder, train_pairs, val_pairs, con
                 plot_stop_loss_total = 0
                 plot_caption_loss_total = 0
 
-        val_metrics = evaluate_pairs(encoder, sent_decoder, word_decoder, val_pairs, config)
-        if val_metrics > best_metrics:
-            best_metrics = val_metrics
-            save_model(encoder, sent_decoder, word_decoder, config.StoreRoot, suffix='_'.join([str(iter), str(val_metrics)]))
+        metrics = evaluate_pairs(encoder, sent_decoder, word_decoder, val_pairs, config)
+        print("Validation:")
+        for k, v in metrics.items():
+            if isinstance(v, list):
+                print(k, end=": ")
+                for vi in v:
+                    print("{:.3f}".format(vi), end=' ')
+                print("")
+            else:
+                print(k + ": {:.3f}".format(v))
+
+        save_model(encoder, sent_decoder, word_decoder, config.StoreRoot, suffix='_'+str(iter))
 
     show_plot(plot_losses, name="loss")
     show_plot(plot_stop_losses, name="stop_loss")
@@ -526,17 +540,16 @@ def evaluate_pairs(encoder, sent_decoder, word_decoder, pairs, config, n=-1, ver
     if not os.path.exists(store_path):
         os.mkdir(store_path)
 
-    from nltk.translate.bleu_score import sentence_bleu
-    from functools import reduce
+    #from nltk.translate.bleu_score import sentence_bleu
+    #from functools import reduce
     import random
-
     random.shuffle(val_pairs)
     if n > 0:
         pairs = pairs[:n]
 
     num = len(pairs)
 
-    bleu = 0
+    truths, preds = {},{}
     for i in range(num):
         if verbose:
             print('{}/{}\r'.format(i, num), end='')
@@ -544,11 +557,9 @@ def evaluate_pairs(encoder, sent_decoder, word_decoder, pairs, config, n=-1, ver
         im = np.array(Image.open(pair[0]))
         truth_cap = pair[1]
         pred_cap = evaluate(encoder, sent_decoder, word_decoder, pair[0], config)
-        #print(' '.join(truth_cap).split(' '))
-        #print(reduce(lambda x, y: x + y, pred_cap))
-        bleu += sentence_bleu(' '.join(truth_cap).split(' '), reduce(lambda x, y: x + y, pred_cap))
-        # TODO: Using pycocoevalcap ( https://github.com/kelvinxu/arctic-captions/blob/master/metrics.py) -> python 3
 
+        truths[str(i)] = ' . '.join(truth_cap)
+        preds[str(i)] = ' . '.join([' '.join(sent) for sent in pred_cap])
 
         plt.figure()
         fig, ax = plt.subplots()
@@ -557,9 +568,11 @@ def evaluate_pairs(encoder, sent_decoder, word_decoder, pairs, config, n=-1, ver
         plt.title('%s\nGT:%s' % (truth_cap, pred_cap))
         plt.axis('off')
         plt.savefig(os.path.join(store_path, str(i)+'.png'))
-    if verbose:
-        print("Done!")
-    return bleu / n
+
+    # TODO: Using pycocoevalcap ( https://github.com/kelvinxu/arctic-captions/blob/master/metrics.py) -> python 3
+    metrics_computer = Metrics()
+    metrics = metrics_computer.compute_set_score(truths, preds)
+    return metrics
 
 
 def display_randomly(encoder, sent_decoder, word_decoder, val_pairs, config):
@@ -587,15 +600,33 @@ class Metrics:
         self.meteor = Meteor()
 
 
-    def compute_score(self, truth, pred):
+    def compute_single_score(self, truth, pred):
         '''
         Computer several metrics
         :param truth: <String> the ground truth sentence
         :param pred:  <String> predicted sentence
         :return: score list
         '''
-        gts = {}
+        bleu_gts = {'1': [truth]}
+        bleu_res = {'1': [pred]}
+        bleu_score = self.bleu.compute_score(bleu_gts, bleu_res)
+
+        rouge_gts = bleu_gts
+        rouge_res = bleu_res
+        rouge_score = self.rouge.compute_score(rouge_gts, rouge_res)
+
+        return {'BLEU': bleu_score[0], 'ROUGE': rouge_score[0]}
+
+    def compute_set_score(self, truths, preds):
+        gts = {k: [v] for k, v in truths.items()}
+        res = {k: [v] for k, v in preds.items()}
+
         bleu_score = self.bleu.compute_score(gts, res)
+        rouge_score = self.rouge.compute_score(gts, res)
+        cider_score = self.cider.compute_score(gts, res)
+
+        return {'BLEU': bleu_score[0], 'ROUGE': rouge_score[0], 'CIDEr': cider_score[0]}
+
 
 #########################
 # Configuration

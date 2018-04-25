@@ -21,7 +21,7 @@ class Config(object):
     FeatureShape = (512, 16, 16)
 
     # Training optimizer hyper-parameter
-    LR = 1.0e-5
+    LR = 1.0e-6
     Momentum = 0.9
 
     # Training procedure
