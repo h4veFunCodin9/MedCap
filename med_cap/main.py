@@ -7,7 +7,7 @@ import numpy as np
 import unicodedata
 import re, random
 import time, math
-import os
+import os, sys
 
 import skimage.transform as T
 
@@ -164,7 +164,7 @@ class Encoder(torch.nn.Module):
         super(Encoder, self).__init__()
         self.embedding_size = config.IM_EmbeddingSize
 
-        self.vgg = M.vgg11(pretrained=False)
+        self.vgg = M.vgg11(pretrained=True)
         shape = config.FeatureShape
         self.linear = torch.nn.Linear(in_features=(shape[0] * shape[1] * shape[2]), out_features=self.embedding_size)
 
@@ -227,8 +227,9 @@ class WordDecoder(torch.nn.Module):
         self.gru = torch.nn.GRU(self.hidden_size, self.hidden_size)
         self.out = torch.nn.Linear(self.hidden_size, config.DICT_SIZE)
 
-    def forward(self, input, hidden):
-        output = self.embedding(input).view(1, 1, -1)
+    def forward(self, x, hidden):
+        #print('input:', input)
+        output = self.embedding(x).view(1, 1, -1)
         output = F.relu(output)
         output, hidden = self.gru(output, hidden)
         output = self.out(output)
@@ -319,7 +320,7 @@ def train(input_variables, cap_target_variables, stop_target_variables, encoder,
                     ni = topi[0][0]
 
                     word_decoder_input = torch.autograd.Variable(torch.LongTensor([[ni, ]]))
-                    word_decoder_input = word_decoder_input.cuda if torch.cuda.is_available() else word_decoder_input
+                    word_decoder_input = word_decoder_input.cuda() if torch.cuda.is_available() else word_decoder_input
 
                     _word_seen_num += 1
                     if ni == EOS_INDEX:
@@ -448,6 +449,7 @@ def train_iters(encoder, sent_decoder, word_decoder, train_pairs, val_pairs, con
                     else:
                         print(k+": {:.3f}".format(v), end=" ")
                 print("")
+                sys.stdout.flush()
 
                 print_loss_total, print_stop_loss_total, print_caption_loss_total = 0, 0, 0
 
@@ -497,10 +499,9 @@ def evaluate(encoder, sent_decoder, word_decoder, imagepath, config):
     topics = []
     for sent_i in range(config.MAX_SENT_NUM):
         sent_decoder_topic, sent_decoder_stop, sent_decoder_hidden = sent_decoder(sent_decoder_input, sent_decoder_hidden)
-
         # if it should stop in this step
         topv, topi = sent_decoder_stop.data.topk(1)
-        ni = topi[0][0]
+        ni = topi[0][0][0]
         if ni == 1:
             break
 
@@ -561,13 +562,13 @@ def evaluate_pairs(encoder, sent_decoder, word_decoder, pairs, config, n=-1, ver
         truths[str(i)] = ' . '.join(truth_cap)
         preds[str(i)] = ' . '.join([' '.join(sent) for sent in pred_cap])
 
-        plt.figure()
+        '''plt.figure()
         fig, ax = plt.subplots()
 
         plt.imshow(im)
         plt.title('%s\nGT:%s' % (truth_cap, pred_cap))
         plt.axis('off')
-        plt.savefig(os.path.join(store_path, str(i)+'.png'))
+        plt.savefig(os.path.join(store_path, str(i)+'.png'))'''
 
     # TODO: Using pycocoevalcap ( https://github.com/kelvinxu/arctic-captions/blob/master/metrics.py) -> python 3
     metrics_computer = Metrics()
@@ -637,16 +638,16 @@ torch.manual_seed(1)
 if __name__ == '__main__':
     import argparse
     parser = argparse.ArgumentParser(description="Medical Captioning")
-    parser.add_argument('--im', required=False, default='/Users/luzhoutao/courses/毕业论文/IU Chest X-Ray/NLMCXR_png',
+    parser.add_argument('--im', required=True, default='/Users/luzhoutao/courses/毕业论文/IU Chest X-Ray/NLMCXR_png',
                         metavar="path/to/image/dataset",
                         help="The image dataset")
-    parser.add_argument('--trainval-cap', required=False, default="/Users/luzhoutao/courses/毕业论文/IU Chest X-Ray/trainval_findings.txt",
+    parser.add_argument('--trainval-cap', required=True, default="/Users/luzhoutao/courses/毕业论文/IU Chest X-Ray/trainval_findings.txt",
                         metavar='path/to/trainval/findings',
                         help="The medical image captions for training and validation")
-    parser.add_argument('--test-cap', required=False, default="/Users/luzhoutao/courses/毕业论文/IU Chest X-Ray/test_findings.txt",
+    parser.add_argument('--test-cap', required=True, default="/Users/luzhoutao/courses/毕业论文/IU Chest X-Ray/test_findings.txt",
                         metavar="path/to/test/findings",
                         help='The medical image captions for testing')
-    parser.add_argument('--store-root', required=False, default='/Users/luzhoutao/courses/毕业论文/IU Chest X-Ray/MedCap/checkpoints', #"/mnt/md1/lztao/models/med_cap",
+    parser.add_argument('--store-root', required=True, default='/Users/luzhoutao/courses/毕业论文/IU Chest X-Ray/MedCap/checkpoints', #"/mnt/md1/lztao/models/med_cap",
                         metavar='path/to/store/models',
                         help="Store model")
     parser.add_argument('--load-root', required=False, default='.',

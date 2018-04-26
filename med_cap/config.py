@@ -21,12 +21,12 @@ class Config(object):
     FeatureShape = (512, 16, 16)
 
     # Training optimizer hyper-parameter
-    LR = 1.0e-6
+    LR = 1.0e-5
     Momentum = 0.9
 
     # Training procedure
     NumIters = 500
-    BatchSize = 1
+    BatchSize = 4
     PrintFrequency = 1
     PlotFrequency = 1
 
