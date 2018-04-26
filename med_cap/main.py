@@ -180,9 +180,12 @@ class SentDecoder(torch.nn.Module):
         super(SentDecoder, self).__init__()
         self.hidden_size = config.SentLSTM_HiddenSize
         self.topic_size = config.TopicSize
+        # for current attention
+        self.attn_im_W = torch.nn.Linear(config.IM_EmbeddingSize, config.IM_EmbeddingSize)
+        self.attn_h_W = torch.nn.Linear(self.hidden_size, config.IM_EmbeddingSize)
+        self.attn_W = torch.nn.Linear(config.IM_EmbeddingSize, config.IM_EmbeddingSize)
         # context vector for each time step
-        self.ctx_im_W = torch.nn.Linear(config.IM_EmbeddingSize, self.hidden_size)
-        self.ctx_h_W = torch.nn.Linear(self.hidden_size, self.hidden_size)
+        self.ctx_W = torch.nn.Linear(config.IM_EmbeddingSize, self.hidden_size)
         # RNN unit
         self.gru = torch.nn.GRU(self.hidden_size, self.hidden_size)
         # topic output
@@ -193,11 +196,12 @@ class SentDecoder(torch.nn.Module):
         self.stop_prev_h_W = torch.nn.Linear(self.hidden_size, self.hidden_size)
         self.stop_W = torch.nn.Linear(self.hidden_size, 2)
 
+    # for sentence decoder, the INPUT is image embeddings
     def forward(self, input, hidden):
         x = input
         # generate current context vector
-        ctx = self.ctx_im_W(x) + self.ctx_h_W(hidden)
-        ctx = F.tanh(ctx)
+        attn = self.get_attn(x, hidden)
+        ctx = self.ctx_W(attn * x)
         # run RNN
         prev_hidden = hidden
         output, hidden = self.gru(ctx, hidden)
@@ -211,6 +215,12 @@ class SentDecoder(torch.nn.Module):
         stop = self.stop_W(stop)
 
         return topic, stop, hidden
+
+    def get_attn(self, im_embed, prev_h):
+        attn = self.attn_im_W(im_embed) + self.attn_h_W(prev_h)
+        attn = F.tanh(attn)
+        attn = self.attn_W(attn)
+        return attn
 
     def init_hidden(self):
         hidden = torch.autograd.Variable(torch.zeros(1, 1, self.hidden_size))
@@ -557,7 +567,6 @@ def evaluate_pairs(encoder, sent_decoder, word_decoder, pairs, config, n=-1, ver
         if verbose:
             print('{}/{}\r'.format(i, num), end='')
         pair = pairs[i]
-        im = np.array(Image.open(pair[0]))
         truth_cap = pair[1]
         pred_cap = evaluate(encoder, sent_decoder, word_decoder, pair[0], config)
 
@@ -567,12 +576,12 @@ def evaluate_pairs(encoder, sent_decoder, word_decoder, pairs, config, n=-1, ver
         '''plt.figure()
         fig, ax = plt.subplots()
 
+        im = np.array(Image.open(pair[0]))
         plt.imshow(im)
         plt.title('%s\nGT:%s' % (truth_cap, pred_cap))
         plt.axis('off')
         plt.savefig(os.path.join(store_path, str(i)+'.png'))'''
 
-    # TODO: Using pycocoevalcap ( https://github.com/kelvinxu/arctic-captions/blob/master/metrics.py) -> python 3
     metrics_computer = Metrics()
     metrics = metrics_computer.compute_set_score(truths, preds)
     return metrics
@@ -587,8 +596,10 @@ def display_randomly(encoder, sent_decoder, word_decoder, val_pairs, config):
 
 
 ########################
-# Metrics
+# Metrics:
+# Use pycocoevalcap ( https://github.com/kelvinxu/arctic-captions/blob/master/metrics.py) -> python 3
 ########################
+
 class Metrics:
 
     def __init__(self):
