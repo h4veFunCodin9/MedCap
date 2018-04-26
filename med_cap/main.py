@@ -380,14 +380,14 @@ def time_since(since, percent):
     return '%s (- %s)' % (as_minute(s), as_minute(rs))
 
 
-def show_plot(points, name):
+def show_plot(points, store_root, name):
     plt.figure()
     fig, ax = plt.subplots()
     # this locator puts ticks at regular intervals
     loc = ticker.MultipleLocator(base=0.2)
     ax.yaxis.set_major_locator(loc)
     plt.plot(points)
-    fig.savefig(name+'_tendency.png')
+    fig.savefig(os.path.join(store_root, name+'_tendency.png'))
 
 
 def train_iters(encoder, sent_decoder, word_decoder, train_pairs, val_pairs, config):
@@ -493,9 +493,9 @@ def train_iters(encoder, sent_decoder, word_decoder, train_pairs, val_pairs, con
 
         save_model(encoder, sent_decoder, word_decoder, config.StoreRoot, suffix='_'+str(iter))
 
-    show_plot(plot_losses, name="loss")
-    show_plot(plot_stop_losses, name="stop_loss")
-    show_plot(plot_caption_losses, name="caption_loss")
+    show_plot(plot_losses, config.store_root, name="loss")
+    show_plot(plot_stop_losses, config.store_root, name="stop_loss")
+    show_plot(plot_caption_losses, config.store_root, name="caption_loss")
 
 
 # predict the caption for an image
