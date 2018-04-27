@@ -651,13 +651,13 @@ torch.manual_seed(1)
 if __name__ == '__main__':
     import argparse
     parser = argparse.ArgumentParser(description="Medical Captioning")
-    parser.add_argument('--im', required=True, default='/Users/luzhoutao/courses/毕业论文/IU Chest X-Ray/NLMCXR_png',
+    parser.add_argument('--im', required=True, default='/Users/luzhoutao/courses/毕业论文/IU Chest X-Ray/dataset/BRATS/images',
                         metavar="path/to/image/dataset",
                         help="The image dataset")
-    parser.add_argument('--trainval-cap', required=True, default="/Users/luzhoutao/courses/毕业论文/IU Chest X-Ray/trainval_findings.txt",
+    parser.add_argument('--trainval-cap', required=True, default="/Users/luzhoutao/courses/毕业论文/IU Chest X-Ray/dataset/BRATS/train_captions.txt",
                         metavar='path/to/trainval/findings',
                         help="The medical image captions for training and validation")
-    parser.add_argument('--test-cap', required=True, default="/Users/luzhoutao/courses/毕业论文/IU Chest X-Ray/test_findings.txt",
+    parser.add_argument('--test-cap', required=True, default="/Users/luzhoutao/courses/毕业论文/IU Chest X-Ray/dataset/BRATS/test_captions.txt",
                         metavar="path/to/test/findings",
                         help='The medical image captions for testing')
     parser.add_argument('--store-root', required=True, default='/Users/luzhoutao/courses/毕业论文/IU Chest X-Ray/MedCap/checkpoints', #"/mnt/md1/lztao/models/med_cap",
