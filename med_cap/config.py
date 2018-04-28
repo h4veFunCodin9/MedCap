@@ -17,9 +17,6 @@ class Config(object):
     # Size of topic vector (should be same as the word LSTM hidden size)
     TopicSize = 512
 
-    # Shape of feature map extracted from CNN
-    FeatureShape = (512, 16, 16)
-
     # Training optimizer hyper-parameter
     LR = 1.0e-5
     Momentum = 0.9
