@@ -33,7 +33,7 @@ class Lang:
     def __init__(self, name):
         self.name = name
         self.word2idx = {}
-        self.idx2word = {0:'SOS', 1:'EOS'}
+        self.idx2word = {0:'SOS', 1:'EOS', 2:'UNK'}
         self.word2count = {}
         self.n_words = 3
 
@@ -46,7 +46,7 @@ class Lang:
         else:
             print("Unknow mode {}.".format(mode))
             return
-
+        terms = terms[0]
         for w in terms:
             w = w.strip()
             if len(w) > 0:
@@ -132,7 +132,7 @@ def stat_captions(pairs, mode='word'):
         for sent in caption:
             if mode == 'word':
                 import fool
-                cur_len = len([term.strip() for term in fool.cut(sent) if len(term.strip())])
+                cur_len = len([term.strip() for term in fool.cut(sent)[0] if len(term.strip())])
             elif mode == 'char':
                 cur_len = len([w.strip() for w in sent if len(w.strip())>0])
             else:
@@ -166,6 +166,7 @@ def variable_from_caption(lang, cap, max_sent_num, mode='word'):
         else:
             print('Unknown mode...')
             return None
+        terms = terms[0]
         indices.append([lang.word2idx[term.strip()] for term in terms if len(term.strip())>0])
     stop = [0 if i < len(indices) else 1 for i in range(max_sent_num)]
 
@@ -193,7 +194,7 @@ class Encoder(torch.nn.Module):
         super(Encoder, self).__init__()
         self.embedding_size = config.IM_EmbeddingSize
 
-        self.vgg = M.vgg11(pretrained=False)
+        self.vgg = M.vgg11(pretrained=True)
         shape = config.FeatureShape
         self.linear = torch.nn.Linear(in_features=(shape[0] * shape[1] * shape[2]), out_features=self.embedding_size)
 
@@ -478,8 +479,8 @@ def train_iters(encoder, sent_decoder, word_decoder, train_pairs, val_pairs, con
                 print_caption_loss_avg = print_caption_loss_total / print_every
 
                 metrics = evaluate_pairs(encoder, sent_decoder, word_decoder, val_pairs, config, n=10, im_load_fn=im_load_fn)
-                print('%s (%d %d%%) loss = %.3f, stop_loss = %.3f, caption_loss = %.3f' %
-                    (time_since(start, dataset_index / dataset_size), dataset_index, dataset_index / dataset_size * 100,
+                print('[Iter: %d, Batch: %d]%s (%d %d%%) loss = %.3f, stop_loss = %.3f, caption_loss = %.3f' %
+                    (iter, batch_index, time_since(start, dataset_index / dataset_size), dataset_index, dataset_index / dataset_size * 100,
                                                 print_loss_avg, print_stop_loss_avg, print_caption_loss_avg), end=" ")
                 for k, v in metrics.items():
                     if isinstance(v, list):
@@ -680,16 +681,16 @@ torch.manual_seed(1)
 if __name__ == '__main__':
     import argparse
     parser = argparse.ArgumentParser(description="Medical Captioning")
-    parser.add_argument('--im', required=False, default='/Users/luzhoutao/courses/毕业论文/IU Chest X-Ray/dataset/BRATS/images',
+    parser.add_argument('--im', required=True, default='/Users/luzhoutao/courses/毕业论文/IU Chest X-Ray/dataset/BRATS/images',
                         metavar="path/to/image/dataset",
                         help="The image dataset")
-    parser.add_argument('--trainval-cap', required=False, default="/Users/luzhoutao/courses/毕业论文/IU Chest X-Ray/dataset/BRATS/train_captions.txt",
+    parser.add_argument('--trainval-cap', required=True, default="/Users/luzhoutao/courses/毕业论文/IU Chest X-Ray/dataset/BRATS/train_captions.txt",
                         metavar='path/to/trainval/findings',
                         help="The medical image captions for training and validation")
-    parser.add_argument('--test-cap', required=False, default="/Users/luzhoutao/courses/毕业论文/IU Chest X-Ray/dataset/BRATS/test_captions.txt",
+    parser.add_argument('--test-cap', required=True, default="/Users/luzhoutao/courses/毕业论文/IU Chest X-Ray/dataset/BRATS/test_captions.txt",
                         metavar="path/to/test/findings",
                         help='The medical image captions for testing')
-    parser.add_argument('--store-root', required=False, default='/Users/luzhoutao/courses/毕业论文/IU Chest X-Ray/MedCap/checkpoints', #"/mnt/md1/lztao/models/med_cap",
+    parser.add_argument('--store-root', required=True, default='/Users/luzhoutao/courses/毕业论文/IU Chest X-Ray/MedCap/checkpoints', #"/mnt/md1/lztao/models/med_cap",
                         metavar='path/to/store/models',
                         help="Store model")
     parser.add_argument('--load-root', required=False, default='.',
