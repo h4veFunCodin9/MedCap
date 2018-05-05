@@ -328,15 +328,15 @@ def save_model(encoder, sent_decoder, word_decoder, config, suffix=""):
     print("Done!")
 
 
-def load_model(encoder, sent_decoder, word_decoder, load_root):
+def load_model(encoder, sent_decoder, word_decoder, config, load_root):
     print("Loading models from '{}' ...".format(load_root))
     encoder_path = os.path.join(load_root, 'encoder')
-    sent_decoder_path = os.path.join(load_root, 'sent_decoder')
-    word_decoder_path = os.path.join(load_root, 'word_decoder')
-
     encoder.load_state_dict(torch.load(encoder_path))
-    sent_decoder.load_state_dict(torch.load(sent_decoder_path))
-    word_decoder.load_state_dict(torch.load(word_decoder_path))
+    if not config.OnlySeg:
+        sent_decoder_path = os.path.join(load_root, 'sent_decoder')
+        word_decoder_path = os.path.join(load_root, 'word_decoder')
+        sent_decoder.load_state_dict(torch.load(sent_decoder_path))
+        word_decoder.load_state_dict(torch.load(word_decoder_path))
     print("Loaded.")
 
 
@@ -827,10 +827,10 @@ if __name__ == '__main__':
         sent_decoder = sent_decoder.cuda() if sent_decoder is not None else None
         word_decoder = word_decoder.cuda() if word_decoder is not None else None
 
-    if os.path.isfile(args.load_root):
+    if os.path.isdir(args.load_root):
         print("Loading model from {}.".format(args.load_root))
         try:
-            load_model(encoder, sent_decoder, word_decoder, args.load_root)
+            load_model(encoder, sent_decoder, word_decoder, config, args.load_root)
             print("Loaded!")
         except KeyError:
             print("The model file is invalid. \nExit!")
