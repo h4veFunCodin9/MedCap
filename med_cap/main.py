@@ -144,12 +144,17 @@ def variable_from_image_path(image_path, load_fn):
     im = np.array(load_fn(image_path))
     #im = T.resize(im, (512, 512, 3), mode='reflect')
 
-    data = np.zeros([1, 3, 240, 240])  # IU chest X-Ray (COCO 640x480)
-    data[0, 0, ...], data[0, 1, ...], data[0, 2, ...] = im[0, :, :, 74], im[0, :, :, 75], im[0, :, :, 76]
+    im_data = np.zeros([1, 4, 240, 240])  # IU chest X-Ray (COCO 640x480)
+    im_data[0, 0, ...], im_data[0, 1, ...], im_data[0, 2, ...], im_data[0, 3, ...] = im[0, :, :, 75], im[1, :, :, 75], im[2, :, :, 75], im[3, :, :, 75]
+    seg_data = np.zeros([1, 240, 240])
+    seg_data[0, ...] = im[4, :, :, 75]
 
-    data = torch.autograd.Variable(torch.FloatTensor(data))
-    data = data.cuda() if torch.cuda.is_available() else data
-    return data
+    im_data = torch.autograd.Variable(torch.FloatTensor(im_data))
+    im_data = im_data.cuda() if torch.cuda.is_available() else im_data
+
+    seg_data = torch.autograd.Variable(torch.FloatTensor(seg_data))
+    seg_data = seg_data.cuda() if torch.cuda.is_available() else seg_data
+    return im_data, seg_data
 
 
 def variable_from_caption(lang, cap, max_sent_num, mode='word'):
@@ -178,8 +183,8 @@ def variable_from_caption(lang, cap, max_sent_num, mode='word'):
 
 def variables_from_pair(lang, pair, max_sent_num, im_load_fn):
     cap_var, stop_var = variable_from_caption(lang, pair[1], max_sent_num)
-    image_var = variable_from_image_path(pair[0], load_fn=im_load_fn)
-    return image_var, cap_var, stop_var
+    image_var, seg_var = variable_from_image_path(pair[0], load_fn=im_load_fn)
+    return image_var, seg_var, cap_var, stop_var
 
 
 #############################
@@ -285,20 +290,24 @@ def load_model(encoder, sent_decoder, word_decoder, load_root):
 ###################################
 # Train and evaluate functionality
 ###################################
-def train(input_variables, cap_target_variables, stop_target_variables, encoder, sent_decoder, word_decoder,
+def train(input_variables, seg_target_variables, cap_target_variables, stop_target_variables, encoder, sent_decoder, word_decoder,
           encoder_optimizer, sent_decoder_optimizer, word_decoder_optimizer, criterion, config):
 
     encoder_optimizer.zero_grad()
     sent_decoder_optimizer.zero_grad()
     word_decoder_optimizer.zero_grad()
 
-    stop_loss, cap_loss = 0, 0
+    seg_loss, stop_loss, cap_loss = 0, 0, 0
 
     total_sent_num, total_word_num = 0, 0
 
     # input_variable: 1 x 3 x 512 x 512, cap_target_variable: num_sent x len_sent, stop_target_variable: max_num_sent x 1
-    def _one_pass(input_variable, cap_target_variable, stop_target_variable):
-        _im_embedding = encoder(input_variable) # [1, HiddenSize]
+    def _one_pass(input_variable, seg_target_variable, cap_target_variable, stop_target_variable):
+
+        _im_embedding, pred_seg = encoder(input_variable) # [1, HiddenSize]
+
+        # compute segmentation loss
+        _seg_loss = criterion(pred_seg, seg_target_variable)
 
         _sent_num = cap_target_variable.size()[0]
         _word_num = 0
@@ -352,15 +361,16 @@ def train(input_variables, cap_target_variables, stop_target_variables, encoder,
                         break
             _word_num += _word_seen_num
 
-        return _stop_loss, _cap_loss, _sent_num, _word_num
+        return _seg_loss, _stop_loss, _cap_loss, _sent_num, _word_num
     
     batch_size = len(input_variables)
     for i in range(batch_size):
         cap_target_variable = cap_target_variables[i]
+        seg_target_variable = seg_target_variables[i]
         stop_target_variable = stop_target_variables[i]
         input_variable = input_variables[i]
 
-        cur_stop_loss, cur_cap_loss, cur_sent_num, cur_word_num = _one_pass(input_variable, cap_target_variable,
+        cur_seg_loss, cur_stop_loss, cur_cap_loss, cur_sent_num, cur_word_num = _one_pass(input_variable, seg_target_variable, cap_target_variable,
                                                                             stop_target_variable)
 
         total_sent_num += cur_sent_num
@@ -368,15 +378,16 @@ def train(input_variables, cap_target_variables, stop_target_variables, encoder,
 
         stop_loss += cur_stop_loss
         cap_loss += cur_cap_loss
+        seg_loss += cur_seg_loss
 
-    loss = config.CapLoss_Weight * cap_loss + config.StopLoss_Weight * stop_loss
+    loss = config.CapLoss_Weight * cap_loss + config.StopLoss_Weight * stop_loss + config.SegLoss_Weight * seg_loss
     loss.backward()
 
     encoder_optimizer.step()
     sent_decoder_optimizer.step()
     word_decoder_optimizer.step()
 
-    return stop_loss.data[0] / total_sent_num, cap_loss.data[0] / total_word_num,
+    return stop_loss.data[0] / total_sent_num, cap_loss.data[0] / total_word_num, seg_loss.data[0] / batch_size
 
 
 def as_minute(s):
@@ -393,14 +404,14 @@ def time_since(since, percent):
     return '%s (- %s)' % (as_minute(s), as_minute(rs))
 
 
-def show_plot(points, name):
+def show_plot(points, store_root, name):
     plt.figure()
     fig, ax = plt.subplots()
     # this locator puts ticks at regular intervals
     loc = ticker.MultipleLocator(base=0.2)
     ax.yaxis.set_major_locator(loc)
     plt.plot(points)
-    fig.savefig(name+'_tendency.png')
+    fig.savefig(os.path.join(store_root, name+'_tendency.png'))
 
 def train_iters(encoder, sent_decoder, word_decoder, train_pairs, val_pairs, config, im_load_fn):
 
@@ -417,15 +428,18 @@ def train_iters(encoder, sent_decoder, word_decoder, train_pairs, val_pairs, con
 
     start = time.time()
 
+    print_seg_loss_total = 0
     print_stop_loss_total = 0
     print_caption_loss_total = 0
     print_loss_total = 0
 
+    plot_seg_loss_total = 0
     plot_stop_loss_total = 0
     plot_caption_loss_total = 0
     plot_loss_total = 0
 
     plot_losses = []
+    plot_seg_losses = []
     plot_stop_losses = []
     plot_caption_losses = []
 
@@ -440,30 +454,34 @@ def train_iters(encoder, sent_decoder, word_decoder, train_pairs, val_pairs, con
             batch_index += 1
 
             input_variables = [p[0] for p in current_pairs]
-            cap_target_variables = [p[1] for p in current_pairs]
-            stop_target_variables = [p[2] for p in current_pairs]
+            seg_target_variables = [p[1] for p in current_pairs]
+            cap_target_variables = [p[2] for p in current_pairs]
+            stop_target_variables = [p[3] for p in current_pairs]
 
-            stop_loss, caption_loss = train(input_variables, cap_target_variables, stop_target_variables, encoder,
+            stop_loss, caption_loss, seg_loss = train(input_variables, seg_target_variables, cap_target_variables, stop_target_variables, encoder,
                                             sent_decoder, word_decoder,encoder_optimizer, sent_decoder_optimizer,
                                             word_decoder_optimizer, criterion, config)
-            loss = stop_loss + caption_loss
+            loss = stop_loss + caption_loss + seg_loss
             print_loss_total += loss
+            print_seg_loss_total += seg_loss
             print_stop_loss_total += stop_loss
             print_caption_loss_total += caption_loss
 
+            plot_seg_loss_total += seg_loss
             plot_stop_loss_total += stop_loss
             plot_caption_loss_total += caption_loss
             plot_loss_total += loss
 
             if dataset_index % print_every == 0:
                 print_loss_avg = print_loss_total / print_every
+                print_seg_loss_avg = print_seg_loss_total / print_every
                 print_stop_loss_avg = print_stop_loss_total / print_every
                 print_caption_loss_avg = print_caption_loss_total / print_every
 
                 metrics = evaluate_pairs(encoder, sent_decoder, word_decoder, val_pairs, config, n=10, im_load_fn=im_load_fn)
-                print('[Iter: %d, Batch: %d]%s (%d %d%%) loss = %.3f, stop_loss = %.3f, caption_loss = %.3f' %
+                print('[Iter: %d, Batch: %d]%s (%d %d%%) loss = %.3f, seg_loss = %.3f, stop_loss = %.3f, caption_loss = %.3f' %
                     (iter, batch_index, time_since(start, dataset_index / dataset_size), dataset_index, dataset_index / dataset_size * 100,
-                                                print_loss_avg, print_stop_loss_avg, print_caption_loss_avg), end=" ")
+                                                print_loss_avg, print_seg_loss_avg, print_stop_loss_avg, print_caption_loss_avg), end=" ")
                 for k, v in metrics.items():
                     if isinstance(v, list):
                         print(k, end=": ")
@@ -475,20 +493,23 @@ def train_iters(encoder, sent_decoder, word_decoder, train_pairs, val_pairs, con
                 print("")
                 sys.stdout.flush()
 
-                print_loss_total, print_stop_loss_total, print_caption_loss_total = 0, 0, 0
+                print_loss_total, print_seg_loss_total, print_stop_loss_total, print_caption_loss_total = 0, 0, 0, 0
 
                 display_randomly(encoder, sent_decoder, word_decoder, val_pairs, config, im_load_fn=im_load_fn)
 
             if batch_index % plot_every == 0:
                 plot_loss_avg = plot_loss_total / plot_every
+                plot_seg_loss_avg = plot_seg_loss_total / plot_every
                 plot_stop_loss_avg = plot_stop_loss_total / plot_every
                 plot_caption_loss_avg = plot_caption_loss_total /plot_every
 
                 plot_losses.append(plot_loss_avg)
+                plot_seg_losses.append(plot_seg_loss_avg)
                 plot_stop_losses.append(plot_stop_loss_avg)
                 plot_caption_losses.append(plot_caption_loss_avg)
 
                 plot_loss_total = 0
+                plot_seg_loss_total = 0
                 plot_stop_loss_total = 0
                 plot_caption_loss_total = 0
 
@@ -506,16 +527,17 @@ def train_iters(encoder, sent_decoder, word_decoder, train_pairs, val_pairs, con
         save_model(encoder, sent_decoder, word_decoder, config.StoreRoot, suffix='_'+str(iter))
 
     show_plot(plot_losses, config.store_root, name="loss")
+    show_plot(plot_seg_losses, config.store_root, name='seg_loss')
     show_plot(plot_stop_losses, config.store_root, name="stop_loss")
     show_plot(plot_caption_losses, config.store_root, name="caption_loss")
 
 
 # predict the caption for an image
 def evaluate(encoder, sent_decoder, word_decoder, imagepath, config, im_load_fn):
-    input_variable = variable_from_image_path(imagepath, load_fn=im_load_fn)
+    input_variable, seg_variable = variable_from_image_path(imagepath, load_fn=im_load_fn)
 
     # image representation
-    im_embed = encoder(input_variable)
+    im_embed, pred_seg = encoder(input_variable)
 
     # generate sentence topics and stop distribution
     sent_decoder_hidden = sent_decoder.init_hidden()
@@ -661,19 +683,19 @@ if __name__ == '__main__':
     import argparse
 
     parser = argparse.ArgumentParser(description="Medical Captioning")
-    parser.add_argument('--im', required=True,
+    parser.add_argument('--im', required=False,
                         default='/Users/luzhoutao/courses/毕业论文/IU Chest X-Ray/dataset/BRATS/images',
                         metavar="path/to/image/dataset",
                         help="The image dataset")
-    parser.add_argument('--trainval-cap', required=True,
+    parser.add_argument('--trainval-cap', required=False,
                         default="/Users/luzhoutao/courses/毕业论文/IU Chest X-Ray/dataset/BRATS/train_captions.txt",
                         metavar='path/to/trainval/findings',
                         help="The medical image captions for training and validation")
-    parser.add_argument('--test-cap', required=True,
+    parser.add_argument('--test-cap', required=False,
                         default="/Users/luzhoutao/courses/毕业论文/IU Chest X-Ray/dataset/BRATS/test_captions.txt",
                         metavar="path/to/test/findings",
                         help='The medical image captions for testing')
-    parser.add_argument('--store-root', required=True,
+    parser.add_argument('--store-root', required=False,
                         default='/Users/luzhoutao/courses/毕业论文/IU Chest X-Ray/MedCap/checkpoints',
                         # "/mnt/md1/lztao/models/med_cap",
                         metavar='path/to/store/models',
