@@ -148,11 +148,13 @@ def variable_from_image_path(image_path, load_fn):
     im_data[0, 0, ...], im_data[0, 1, ...], im_data[0, 2, ...], im_data[0, 3, ...] = im[0, :, :, 75], im[1, :, :, 75], im[2, :, :, 75], im[3, :, :, 75]
     seg_data = np.zeros([1, 240, 240])
     seg_data[0, ...] = im[4, :, :, 75]
+    seg_data[seg_data==4] = 3
+    seg_data = seg_data.astype(np.int16)
 
     im_data = torch.autograd.Variable(torch.FloatTensor(im_data))
     im_data = im_data.cuda() if torch.cuda.is_available() else im_data
 
-    seg_data = torch.autograd.Variable(torch.FloatTensor(seg_data))
+    seg_data = torch.autograd.Variable(torch.LongTensor(seg_data))
     seg_data = seg_data.cuda() if torch.cuda.is_available() else seg_data
     return im_data, seg_data
 
@@ -190,19 +192,70 @@ def variables_from_pair(lang, pair, max_sent_num, im_load_fn):
 #############################
 # Model: Encoder and Decoder
 ##############################
+class ConvBlock(torch.nn.Module):
+    def __init__(self, in_channel, out_channel):
+        super(ConvBlock, self).__init__()
+        self.conv1 = torch.nn.Conv2d(in_channel, out_channel, kernel_size=3, padding=1)
+        self.bn1 = torch.nn.BatchNorm2d(out_channel)
+        self.conv2 = torch.nn.Conv2d(out_channel, out_channel, kernel_size=3, padding=1)
+        self.bn2 = torch.nn.BatchNorm2d(out_channel)
+
+    def forward(self, x):
+        x = self.conv1(x)
+        x = self.bn1(x)
+        x = F.relu(x)
+        x = self.conv2(x)
+        x = self.bn2(x)
+        x = F.relu(x)
+        return x
+
 class Encoder(torch.nn.Module):
     def __init__(self, config):
         super(Encoder, self).__init__()
         self.embedding_size = config.IM_EmbeddingSize
 
-        self.vgg = M.vgg11(pretrained=True)
+        # contracting path
+        self.conv1 = ConvBlock(4, 32)
+        self.mp1 = torch.nn.MaxPool2d(kernel_size=2, stride=2)
+        self.conv2 = ConvBlock(32, 64)
+        self.mp2 = torch.nn.MaxPool2d(kernel_size=2, stride=2)
+        self.conv3 = ConvBlock(64, 128)
+        self.mp3 = torch.nn.MaxPool2d(kernel_size=2, stride=2)
+        self.conv4 = ConvBlock(128, 256)
+
+        # expanding path
+        self.up1 = torch.nn.ConvTranspose2d(256, 128, kernel_size=2, stride=2)
+        self.deconv1 = ConvBlock(256, 128)
+        self.up2 = torch.nn.ConvTranspose2d(128, 64, kernel_size=2, stride=2)
+        self.deconv2 = ConvBlock(128, 64)
+        self.up3 = torch.nn.ConvTranspose2d(64, 32, kernel_size=2, stride=2)
+        self.outconv = torch.nn.Conv2d(64, config.SegClasses, kernel_size=1, padding=0)
+
+        # image embedding: deep layers
         shape = config.FeatureShape
         self.linear = torch.nn.Linear(in_features=(shape[0] * shape[1] * shape[2]), out_features=self.embedding_size)
 
-    def forward(self, x):   # IU Chest X-ray image: [1, 3, 512, 512]
-        feature = self.vgg.features(x) # IU Chest X-ray image: [1, 512, 16, 16]
+    def forward(self, x):   # BRATS image: [1, 4, 240, 240]
+        # contracting
+        x_240 = self.conv1(x)
+        x_120 = self.mp1(x_240)
+        x_120 = self.conv2(x_120)
+        x_60 = self.mp2(x_120)
+        x_60 = self.conv3(x_60)
+        x_30 = self.mp3(x_60)
+        x_30 = self.conv4(x_30)
+
+        # expanding
+        _x_60 = torch.cat([self.up1(x_30), x_60], dim=1)
+        _x_60 = self.deconv1(_x_60)
+        _x_120 = torch.cat([self.up2(_x_60), x_120], dim=1)
+        _x_120 = self.deconv2(_x_120)
+        _x_240 = torch.cat([self.up3(_x_120), x_240], dim=1)
+        output = self.outconv(_x_240)
+
+        feature = x_30
         embedding = self.linear(feature.view(-1))
-        return embedding.view(1, -1)
+        return embedding.view(1, -1), output
 
 
 class SentDecoder(torch.nn.Module):
@@ -223,8 +276,7 @@ class SentDecoder(torch.nn.Module):
         self.stop_prev_h_W = torch.nn.Linear(self.hidden_size, self.hidden_size)
         self.stop_W = torch.nn.Linear(self.hidden_size, 2)
 
-    def forward(self, input, hidden):
-        x = input
+    def forward(self, x, hidden):
         # generate current context vector
         ctx = self.ctx_im_W(x) + self.ctx_h_W(hidden)
         ctx = F.tanh(ctx)
@@ -294,20 +346,24 @@ def train(input_variables, seg_target_variables, cap_target_variables, stop_targ
           encoder_optimizer, sent_decoder_optimizer, word_decoder_optimizer, criterion, config):
 
     encoder_optimizer.zero_grad()
-    sent_decoder_optimizer.zero_grad()
-    word_decoder_optimizer.zero_grad()
+    if not config.OnlySeg:
+        sent_decoder_optimizer.zero_grad()
+        word_decoder_optimizer.zero_grad()
 
     seg_loss, stop_loss, cap_loss = 0, 0, 0
 
     total_sent_num, total_word_num = 0, 0
 
     # input_variable: 1 x 3 x 512 x 512, cap_target_variable: num_sent x len_sent, stop_target_variable: max_num_sent x 1
-    def _one_pass(input_variable, seg_target_variable, cap_target_variable, stop_target_variable):
+    def _one_pass(input_variable, seg_target_variable, cap_target_variable, stop_target_variable, only_seg):
 
         _im_embedding, pred_seg = encoder(input_variable) # [1, HiddenSize]
 
         # compute segmentation loss
         _seg_loss = criterion(pred_seg, seg_target_variable)
+
+        if only_seg:
+            return _seg_loss, 0, 0, 0, 0
 
         _sent_num = cap_target_variable.size()[0]
         _word_num = 0
@@ -371,7 +427,7 @@ def train(input_variables, seg_target_variables, cap_target_variables, stop_targ
         input_variable = input_variables[i]
 
         cur_seg_loss, cur_stop_loss, cur_cap_loss, cur_sent_num, cur_word_num = _one_pass(input_variable, seg_target_variable, cap_target_variable,
-                                                                            stop_target_variable)
+                                                                            stop_target_variable, config.OnlySeg)
 
         total_sent_num += cur_sent_num
         total_word_num += cur_word_num
@@ -380,14 +436,19 @@ def train(input_variables, seg_target_variables, cap_target_variables, stop_targ
         cap_loss += cur_cap_loss
         seg_loss += cur_seg_loss
 
-    loss = config.CapLoss_Weight * cap_loss + config.StopLoss_Weight * stop_loss + config.SegLoss_Weight * seg_loss
+    if config.OnlySeg:
+        loss = seg_loss
+    else:
+        loss = config.CapLoss_Weight * cap_loss + config.StopLoss_Weight * stop_loss + config.SegLoss_Weight * seg_loss
     loss.backward()
 
     encoder_optimizer.step()
-    sent_decoder_optimizer.step()
-    word_decoder_optimizer.step()
-
-    return stop_loss.data[0] / total_sent_num, cap_loss.data[0] / total_word_num, seg_loss.data[0] / batch_size
+    if not config.OnlySeg:
+        sent_decoder_optimizer.step()
+        word_decoder_optimizer.step()
+        return stop_loss.data[0] / total_sent_num, cap_loss.data[0] / total_word_num, seg_loss.data[0] / batch_size
+    else:
+        return 0, 0, seg_loss.data[0] / batch_size
 
 
 def as_minute(s):
@@ -421,8 +482,10 @@ def train_iters(encoder, sent_decoder, word_decoder, train_pairs, val_pairs, con
     plot_every = config.PlotFrequency
 
     encoder_optimizer = torch.optim.SGD(params=encoder.parameters(), lr=config.LR, momentum=config.Momentum)
-    sent_decoder_optimizer = torch.optim.SGD(params=sent_decoder.parameters(), lr=config.LR, momentum=config.Momentum)
-    word_decoder_optimizer = torch.optim.SGD(params=word_decoder.parameters(), lr=config.LR, momentum=config.Momentum)
+    sent_decoder_optimizer, word_decoder_optimizer = None, None
+    if not config.OnlySeg:
+        sent_decoder_optimizer = torch.optim.SGD(params=sent_decoder.parameters(), lr=config.LR, momentum=config.Momentum)
+        word_decoder_optimizer = torch.optim.SGD(params=word_decoder.parameters(), lr=config.LR, momentum=config.Momentum)
 
     criterion = torch.nn.CrossEntropyLoss()
 
@@ -478,14 +541,22 @@ def train_iters(encoder, sent_decoder, word_decoder, train_pairs, val_pairs, con
                 print_stop_loss_avg = print_stop_loss_total / print_every
                 print_caption_loss_avg = print_caption_loss_total / print_every
 
-                bleu_scores = evaluate_pairs(encoder, sent_decoder, word_decoder, val_pairs, config, n=10, im_load_fn=im_load_fn)
-                print('[Iter: %d, Batch: %d]%s (%d %d%%) loss = %.3f, stop_loss = %.3f, caption_loss = %.3f, bleu_score = [%.3f, %.3f, %.3f, %.3f]' %
+                if config.OnlySeg:
+                    print(
+                        '[Iter: %d, Batch: %d]%s (%d %d%%) loss = %.3f, seg_loss = %.3f' %
+                        (iter, batch_index, time_since(start, dataset_index / dataset_size), dataset_index,
+                         dataset_index / dataset_size * 100,
+                         print_loss_avg, print_seg_loss_avg))
+                else:
+                    bleu_scores = evaluate_pairs(encoder, sent_decoder, word_decoder, val_pairs, config, n=10, im_load_fn=im_load_fn)
+                    print('[Iter: %d, Batch: %d]%s (%d %d%%) loss = %.3f, seg_loss = %.3f, stop_loss = %.3f, caption_loss = %.3f, bleu_score = [%.3f, %.3f, %.3f, %.3f]' %
                     (iter, batch_index, time_since(start, dataset_index / dataset_size), dataset_index, dataset_index / dataset_size * 100,
-                                                print_loss_avg, print_stop_loss_avg, print_caption_loss_avg, bleu_scores[0], bleu_scores[1], bleu_scores[2], bleu_scores[3]))
+                                                print_loss_avg, print_seg_loss_avg, print_stop_loss_avg, print_caption_loss_avg, bleu_scores[0], bleu_scores[1], bleu_scores[2], bleu_scores[3]))
 
                 print_loss_total, print_seg_loss_total, print_stop_loss_total, print_caption_loss_total = 0, 0, 0, 0
 
-                display_randomly(encoder, sent_decoder, word_decoder, val_pairs, config, im_load_fn=im_load_fn)
+                if not config.OnlySeg:
+                    display_randomly(encoder, sent_decoder, word_decoder, val_pairs, config, im_load_fn=im_load_fn)
 
             if batch_index % plot_every == 0:
                 plot_loss_avg = plot_loss_total / plot_every
@@ -503,8 +574,9 @@ def train_iters(encoder, sent_decoder, word_decoder, train_pairs, val_pairs, con
                 plot_stop_loss_total = 0
                 plot_caption_loss_total = 0
 
-        val_bleu_scores = evaluate_pairs(encoder, sent_decoder, word_decoder, val_pairs, config, im_load_fn=im_load_fn)
-        print("[Iter {}] Validation BLEU: {:.3f} {:.3f} {:.3f} {:.3f}".format(iter, val_bleu_scores[0], val_bleu_scores[1], val_bleu_scores[2], val_bleu_scores[3]))
+        if not config.OnlySeg:
+            val_bleu_scores = evaluate_pairs(encoder, sent_decoder, word_decoder, val_pairs, config, im_load_fn=im_load_fn)
+            print("[Iter {}] Validation BLEU: {:.3f} {:.3f} {:.3f} {:.3f}".format(iter, val_bleu_scores[0], val_bleu_scores[1], val_bleu_scores[2], val_bleu_scores[3]))
 
         save_model(encoder, sent_decoder, word_decoder, config.StoreRoot, suffix='_'+str(iter))
 
@@ -731,7 +803,10 @@ if __name__ == '__main__':
         DICT_SIZE = len(lang)
 
         # Shape of feature map extracted from CNN
-        FeatureShape = (512, 7, 7)
+        FeatureShape = (256, 30, 30)
+
+        # Train Configuration
+        OnlySeg = True
 
         def __int__(self):
             super(IUChest_Config, self).__init__()
@@ -741,12 +816,15 @@ if __name__ == '__main__':
 
     print("Create model...")
     encoder = Encoder(config)
-    sent_decoder = SentDecoder(config)
-    word_decoder = WordDecoder(config)
+    sent_decoder, word_decoder = None, None
+    if not config.OnlySeg:
+        sent_decoder = SentDecoder(config)
+        word_decoder = WordDecoder(config)
+
     if torch.cuda.is_available():
         encoder = encoder.cuda()
-        sent_decoder = sent_decoder.cuda()
-        word_decoder = word_decoder.cuda()
+        sent_decoder = sent_decoder.cuda() if sent_decoder is not None else None
+        word_decoder = word_decoder.cuda() if word_decoder is not None else None
 
     if os.path.isfile(args.load_root):
         print("Loading model from {}.".format(args.load_root))

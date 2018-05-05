@@ -3,6 +3,8 @@
 #########################
 
 class Config(object):
+    # Segmentation classes
+    SegClasses = 4
     # image embedding size
     IM_EmbeddingSize = 512
 
@@ -22,12 +24,12 @@ class Config(object):
     FeatureShape = (512, 16, 16)
 
     # Training optimizer hyper-parameter
-    LR = 1.0e-5
+    LR = 1.0e-3
     Momentum = 0.9
 
     # Training procedure
     NumIters = 500
-    BatchSize = 4
+    BatchSize = 16
     PrintFrequency = 1
     PlotFrequency = 1
 
