@@ -318,12 +318,13 @@ class WordDecoder(torch.nn.Module):
         return output, hidden
 
 
-def save_model(encoder, sent_decoder, word_decoder, store_root, suffix=""):
+def save_model(encoder, sent_decoder, word_decoder, config, suffix=""):
     # save the model
     print("Saving models...")
-    torch.save(encoder.state_dict(), os.path.join(store_root, "encoder_"+suffix))
-    torch.save(sent_decoder.state_dict(), os.path.join(store_root, "sent_decoder_"+suffix))
-    torch.save(word_decoder.state_dict(), os.path.join(store_root, "word_decoder_"+suffix))
+    torch.save(encoder.state_dict(), os.path.join(config.StoreRoot, "encoder_"+suffix))
+    if not config.OnlySeg:
+        torch.save(sent_decoder.state_dict(), os.path.join(config.StoreRoot, "sent_decoder_"+suffix))
+        torch.save(word_decoder.state_dict(), os.path.join(config.StoreRoot, "word_decoder_"+suffix))
     print("Done!")
 
 
@@ -578,7 +579,7 @@ def train_iters(encoder, sent_decoder, word_decoder, train_pairs, val_pairs, con
             val_bleu_scores = evaluate_pairs(encoder, sent_decoder, word_decoder, val_pairs, config, im_load_fn=im_load_fn)
             print("[Iter {}] Validation BLEU: {:.3f} {:.3f} {:.3f} {:.3f}".format(iter, val_bleu_scores[0], val_bleu_scores[1], val_bleu_scores[2], val_bleu_scores[3]))
 
-        save_model(encoder, sent_decoder, word_decoder, config.StoreRoot, suffix='_'+str(iter))
+        save_model(encoder, sent_decoder, word_decoder, config, suffix='_'+str(iter))
 
     show_plot(plot_losses, config.store_root, name="loss")
     show_plot(plot_seg_losses, config.store_root, name='seg_loss')
