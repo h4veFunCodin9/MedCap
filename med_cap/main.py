@@ -74,7 +74,7 @@ def unicode_to_ascii(s):
 
 def normalize_string(s):
     s = unicode_to_ascii(s.lower().strip())
-    s = re.sub(r"([，。、*])", r" \1 ", s)   #将标点符号用空格分开
+    s = re.sub(r"([。])", r" \1 ", s)   #将标点符号用空格分开
     #s = re.sub(r"[^a-zA-Z.!?]+", r" ", s)  #除字母标点符号的其他连续字符替换成一个空格
     return s
 
@@ -420,7 +420,7 @@ def show_plot(points, store_root, name):
     fig.savefig(os.path.join(store_root, name+'_tendency.png'))
 
 
-def train_iters(encoder, sent_decoder, word_decoder, train_pairs, val_pairs, config, im_load_fn):
+def train_iters(encoder, sent_decoder, word_decoder, train_pairs, val_pairs, config, im_load_fn, start_iter=0):
 
     n_iters = config.NumIters
     batch_size = config.BatchSize
@@ -447,7 +447,7 @@ def train_iters(encoder, sent_decoder, word_decoder, train_pairs, val_pairs, con
     plot_stop_losses = []
     plot_caption_losses = []
 
-    for iter in range(1, n_iters+1):
+    for iter in range(start_iter+1, start_iter+n_iters+1):
         random.shuffle(train_pairs)
         dataset_index, batch_index, dataset_size = 0, 0, len(train_pairs)
         while dataset_index + batch_size < dataset_size:
@@ -566,7 +566,6 @@ def evaluate(encoder, sent_decoder, word_decoder, imagepath, config, im_load_fn)
             ni = topi[0][0]
 
             if ni == EOS_INDEX:
-                decoded_sentence.append('<EOS>')
                 break
             else:
                 decoded_sentence.append(lang.idx2word[ni])
@@ -600,8 +599,8 @@ def evaluate_pairs(encoder, sent_decoder, word_decoder, pairs, config, im_load_f
         truth_cap = pair[1]
         pred_cap = evaluate(encoder, sent_decoder, word_decoder, pair[0], config, im_load_fn=im_load_fn)
 
-        truths[str(i)] = ' . '.join(truth_cap)
-        preds[str(i)] = ' . '.join([' '.join(sent) for sent in pred_cap])
+        truths[str(i)] = '。'.join(truth_cap)
+        preds[str(i)] = '。'.join([''.join(sent) for sent in pred_cap])
 
         '''plt.figure()
         fig, ax = plt.subplots()
@@ -620,9 +619,9 @@ def evaluate_pairs(encoder, sent_decoder, word_decoder, pairs, config, im_load_f
 def display_randomly(encoder, sent_decoder, word_decoder, val_pairs, config, im_load_fn):
     pair = random.choice(val_pairs)
     truth_cap = pair[1]
-    print("Truth: ", '. '.join(truth_cap))
+    print("Truth: ", '。'.join(truth_cap))
     pred_cap = evaluate(encoder, sent_decoder, word_decoder, pair[0], config, im_load_fn=im_load_fn)
-    print("Prediction:", '. '.join([' '.join(sent) for sent in pred_cap]))
+    print("Prediction:", '。'.join([''.join(sent) for sent in pred_cap]))
 
 
 ########################
@@ -693,13 +692,15 @@ if __name__ == '__main__':
     parser.add_argument('--store-root', required=True, default='/Users/luzhoutao/courses/毕业论文/IU Chest X-Ray/MedCap/checkpoints', #"/mnt/md1/lztao/models/med_cap",
                         metavar='path/to/store/models',
                         help="Store model")
-    parser.add_argument('--load-root', required=False, default='.',
+    parser.add_argument('--load-root', required=False, default=None,
                         metavar='path/to/saved/models',
                         help="the path to models for restore.")
     parser.add_argument('--val-prop', required=False, default=0.1,
                         metavar='proportionate of validation dataset')
     parser.add_argument('--seg-mode', required=False, default='word',
                         metavar='how to conduct word segmentation')
+    parser.add_argument('--start-iter', required=False, default=0,
+                        metavar='the start iteration number')
     args = parser.parse_args()
     print("Arguments: ")
     print("Image Dataset: ", args.im)
@@ -707,6 +708,8 @@ if __name__ == '__main__':
     print("Caption Dataset (test): ", args.test_cap)
     print("Validation Proportionate: ", args.val_prop)
     print("Store root: ", args.store_root)
+    print('Start Iteration: ', args.start_iter)
+    print('Load root: ', args.load_root)
 
     print("\nRead Captions....")
     trainval_pairs = read_captions(args.trainval_cap, args.im)
@@ -752,7 +755,7 @@ if __name__ == '__main__':
         sent_decoder = sent_decoder.cuda()
         word_decoder = word_decoder.cuda()
 
-    if os.path.isfile(args.load_root):
+    if args.load_root and os.path.isdir(args.load_root):
         print("Loading model from {}.".format(args.load_root))
         try:
             load_model(encoder, sent_decoder, word_decoder, args.load_root)
@@ -763,7 +766,7 @@ if __name__ == '__main__':
             sys.exit(0)
 
     print("--------Train--------")
-    train_iters(encoder, sent_decoder, word_decoder, train_pairs, val_pairs, config, im_load_fn=np.load)
+    train_iters(encoder, sent_decoder, word_decoder, train_pairs, val_pairs, config, im_load_fn=np.load, start_iter=args.start_iter)
 
     print("--------Evaluate--------")
     sentences = evaluate(encoder, sent_decoder, word_decoder, config.TestImagePath, config, np.load)
