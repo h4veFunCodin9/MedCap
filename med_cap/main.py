@@ -74,7 +74,7 @@ def unicode_to_ascii(s):
 
 def normalize_string(s):
     s = unicode_to_ascii(s.lower().strip())
-    s = re.sub(r"([，。、*])", r" \1 ", s)   #将标点符号用空格分开
+    s = re.sub(r"([。*])", r" \1 ", s)   #将标点符号用空格分开
     #s = re.sub(r"[^a-zA-Z.!?]+", r" ", s)  #除字母标点符号的其他连续字符替换成一个空格
     return s
 
@@ -586,8 +586,8 @@ def evaluate_pairs(encoder, sent_decoder, word_decoder, pairs, config, im_load_f
         truth_cap = pair[1]
         pred_cap = evaluate(encoder, sent_decoder, word_decoder, pair[0], config, im_load_fn=im_load_fn)
 
-        truths[str(i)] = '. '.join(truth_cap)
-        preds[str(i)] = '. '.join([''.join(sent) for sent in pred_cap])
+        truths[str(i)] = '。'.join(truth_cap)
+        preds[str(i)] = '。'.join([''.join(sent) for sent in pred_cap])
 
         '''plt.figure()
         fig, ax = plt.subplots()
@@ -605,9 +605,9 @@ def evaluate_pairs(encoder, sent_decoder, word_decoder, pairs, config, im_load_f
 def display_randomly(encoder, sent_decoder, word_decoder, val_pairs, config, im_load_fn):
     pair = random.choice(val_pairs)
     truth_cap = pair[1]
-    print("Truth: ", '. '.join(truth_cap))
+    print("Truth: ", '。'.join(truth_cap))
     pred_cap = evaluate(encoder, sent_decoder, word_decoder, pair[0], config, im_load_fn=im_load_fn)
-    print("Prediction:", '. '.join([''.join(sent) for sent in pred_cap]))
+    print("Prediction:", '。'.join([''.join(sent) for sent in pred_cap]))
 
 
 ########################
