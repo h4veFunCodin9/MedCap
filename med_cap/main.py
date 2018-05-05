@@ -543,11 +543,13 @@ def train_iters(encoder, sent_decoder, word_decoder, train_pairs, val_pairs, con
                 print_caption_loss_avg = print_caption_loss_total / print_every
 
                 if config.OnlySeg:
+                    seg_loss = evaluate_pairs(encoder, sent_decoder, word_decoder, val_pairs, config, n=10,
+                                                 im_load_fn=im_load_fn)
                     print(
-                        '[Iter: %d, Batch: %d]%s (%d %d%%) loss = %.3f, seg_loss = %.3f' %
+                        '[Iter: %d, Batch: %d]%s (%d %d%%) loss = %.3f, seg_loss = %.3f, (val) seg_loss = %.3f' %
                         (iter, batch_index, time_since(start, dataset_index / dataset_size), dataset_index,
                          dataset_index / dataset_size * 100,
-                         print_loss_avg, print_seg_loss_avg))
+                         print_loss_avg, print_seg_loss_avg, seg_loss))
                 else:
                     bleu_scores = evaluate_pairs(encoder, sent_decoder, word_decoder, val_pairs, config, n=10, im_load_fn=im_load_fn)
                     print('[Iter: %d, Batch: %d]%s (%d %d%%) loss = %.3f, seg_loss = %.3f, stop_loss = %.3f, caption_loss = %.3f, bleu_score = [%.3f, %.3f, %.3f, %.3f]' %
@@ -593,6 +595,11 @@ def evaluate(encoder, sent_decoder, word_decoder, imagepath, config, im_load_fn)
 
     # image representation
     im_embed, pred_seg = encoder(input_variable)
+
+    if config.OnlySeg:
+        criterion = torch.nn.CrossEntropyLoss()
+        seg_loss = criterion(pred_seg, seg_variable)
+        return seg_loss
 
     # generate sentence topics and stop distribution
     sent_decoder_hidden = sent_decoder.init_hidden()
@@ -651,12 +658,18 @@ def evaluate_pairs(encoder, sent_decoder, word_decoder, pairs, config, im_load_f
     num = len(pairs)
 
     bleu_scores = []
+    loss = 0
     for i in range(num):
         if verbose:
             print('{}/{}\r'.format(i, num), end='')
         pair = pairs[i]
         truth_cap = pair[1]
-        pred_cap = evaluate(encoder, sent_decoder, word_decoder, pair[0], config, im_load_fn=im_load_fn)
+        if config.OnlySeg:
+            seg_loss = evaluate(encoder, sent_decoder, word_decoder, pair[0], config, im_load_fn=im_load_fn)
+            loss += seg_loss
+            continue
+        else:
+            pred_cap = evaluate(encoder, sent_decoder, word_decoder, pair[0], config, im_load_fn=im_load_fn)
 
         truth = '。'.join(truth_cap)
         pred = '。'.join([''.join(sent) for sent in pred_cap])
@@ -679,7 +692,10 @@ def evaluate_pairs(encoder, sent_decoder, word_decoder, pairs, config, im_load_f
         plt.title('%s\nGT:%s' % (truth_cap, pred_cap))
         plt.axis('off')
         plt.savefig(os.path.join(store_path, str(i)+'.png'))'''
-    return np.mean(np.array(bleu_scores), axis=0)
+    if not config.OnlySeg:
+        return np.mean(np.array(bleu_scores), axis=0)
+    else:
+        return loss / num
 
 def display_randomly(encoder, sent_decoder, word_decoder, val_pairs, config, im_load_fn):
     pair = random.choice(val_pairs)
@@ -807,7 +823,7 @@ if __name__ == '__main__':
         FeatureShape = (256, 30, 30)
 
         # Train Configuration
-        OnlySeg = True
+        OnlySeg = False
 
         def __int__(self):
             super(IUChest_Config, self).__init__()
