@@ -7,7 +7,7 @@ import numpy as np
 import unicodedata
 import re, random
 import time, math
-import os, sys
+import os, pickle
 
 import skimage.transform as T
 
@@ -329,16 +329,24 @@ def save_model(encoder, sent_decoder, word_decoder, config, suffix=""):
 
 
 def load_model(encoder, sent_decoder, word_decoder, load_root):
-    print("Loading models from '{}' ...".format(load_root))
     encoder_path = os.path.join(load_root, 'encoder')
     sent_decoder_path = os.path.join(load_root, 'sent_decoder')
     word_decoder_path = os.path.join(load_root, 'word_decoder')
 
-    encoder.load_state_dict(torch.load(encoder_path))
-    sent_decoder.load_state_dict(torch.load(sent_decoder_path))
-    word_decoder.load_state_dict(torch.load(word_decoder_path))
-    print("Loaded.")
+    if os.path.isfile(encoder_path):
+        print("Loading the model for 'encoder' from '{}' ...".format(encoder_path))
+        encoder.load_state_dict(torch.load(encoder_path))
+        print("Loaded!")
 
+    if os.path.isfile(sent_decoder_path):
+        print("Loading the model for 'sent_decoder' from '{}' ...".format(sent_decoder_path))
+        sent_decoder.load_state_dict(torch.load(sent_decoder_path))
+        print("Loaded!")
+
+    if os.path.isfile(word_decoder_path):
+        print("Loading the model for 'word_decoder' from '{}' ...".format(word_decoder_path))
+        word_decoder.load_state_dict(torch.load(word_decoder_path))
+        print("Loaded!")
 
 ###################################
 # Train and evaluate functionality
@@ -475,7 +483,7 @@ def show_plot(points, store_root, name):
     plt.plot(points)
     fig.savefig(os.path.join(store_root, name+'_tendency.png'))
 
-def train_iters(encoder, sent_decoder, word_decoder, train_pairs, val_pairs, config, im_load_fn):
+def train_iters(encoder, sent_decoder, word_decoder, train_pairs, val_pairs, config, im_load_fn, start_iter):
 
     n_iters = config.NumIters
     batch_size = config.BatchSize
@@ -483,10 +491,14 @@ def train_iters(encoder, sent_decoder, word_decoder, train_pairs, val_pairs, con
     plot_every = config.PlotFrequency
 
     encoder_optimizer = torch.optim.SGD(params=encoder.parameters(), lr=config.LR, momentum=config.Momentum)
+    encoder_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(encoder_optimizer, mode='min', patience=5, verbose=True)
     sent_decoder_optimizer, word_decoder_optimizer = None, None
+    sent_decoder_scheduler, word_decoder_scheduler = None, None
     if not config.OnlySeg:
         sent_decoder_optimizer = torch.optim.SGD(params=sent_decoder.parameters(), lr=config.LR, momentum=config.Momentum)
+        sent_decoder_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(sent_decoder_optimizer, mode='min', patience=5, verbose=True)
         word_decoder_optimizer = torch.optim.SGD(params=word_decoder.parameters(), lr=config.LR, momentum=config.Momentum)
+        word_decoder_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(word_decoder_optimizer, mode='min', patience=5, verbose=True)
 
     criterion = torch.nn.CrossEntropyLoss()
 
@@ -507,7 +519,7 @@ def train_iters(encoder, sent_decoder, word_decoder, train_pairs, val_pairs, con
     plot_stop_losses = []
     plot_caption_losses = []
 
-    for iter in range(1, n_iters+1):
+    for iter in range(start_iter, n_iters+start_iter):
         random.shuffle(train_pairs)
         dataset_index, batch_index, dataset_size = 0, 0, len(train_pairs)
         while dataset_index + batch_size < dataset_size:
@@ -525,7 +537,13 @@ def train_iters(encoder, sent_decoder, word_decoder, train_pairs, val_pairs, con
             stop_loss, caption_loss, seg_loss = train(input_variables, seg_target_variables, cap_target_variables, stop_target_variables, encoder,
                                             sent_decoder, word_decoder,encoder_optimizer, sent_decoder_optimizer,
                                             word_decoder_optimizer, criterion, config)
+            # dynamic adjust the learning rate
+            encoder_scheduler.step(seg_loss)
+
             loss = stop_loss + caption_loss + seg_loss
+            sent_decoder_scheduler.step(loss)
+            word_decoder_scheduler.step(loss)
+
             print_loss_total += loss
             print_seg_loss_total += seg_loss
             print_stop_loss_total += stop_loss
@@ -779,13 +797,15 @@ if __name__ == '__main__':
                         # "/mnt/md1/lztao/models/med_cap",
                         metavar='path/to/store/models',
                         help="Store model")
-    parser.add_argument('--load-root', required=False, default='.',
+    parser.add_argument('--load-root', required=False, default=None,
                         metavar='path/to/saved/models',
                         help="the path to models for restore.")
     parser.add_argument('--val-prop', required=False, default=0.1,
                         metavar='proportionate of validation dataset')
     parser.add_argument('--seg-mode', required=False, default='word',
                         metavar='how to conduct word segmentation')
+    parser.add_argument('--start-iter', required=False, default=0,
+                        metavar='the start iteration number')
     args = parser.parse_args()
     print("Arguments: ")
     print("Image Dataset: ", args.im)
@@ -794,13 +814,18 @@ if __name__ == '__main__':
     print("Validation Proportionate: ", args.val_prop)
     print("Store root: ", args.store_root)
 
-    print("\nRead Captions....")
-    trainval_pairs = read_captions(args.trainval_cap, args.im)
-    test_pairs = read_captions(args.test_cap, args.im)
+    if args.load_root is not None:
+        print("Loading from last experiment settings...")
+        [train_pairs, val_pairs, lang] = pickle.load(os.path.join(args.store_root, 'exp_config.pkl'))
+    else:
+        print("\nRead Captions....")
+        trainval_pairs = read_captions(args.trainval_cap, args.im)
+        test_pairs = read_captions(args.test_cap, args.im)
 
-    train_pairs, val_pairs = split_train_val(trainval_pairs, val_prop=args.val_prop)
+        train_pairs, val_pairs = split_train_val(trainval_pairs, val_prop=args.val_prop)
 
-    lang = prepare_dict(train_pairs, mode=args.seg_mode)
+        lang = prepare_dict(train_pairs, mode=args.seg_mode)
+
     stat_lang(lang)
     print("Train samples: ", len(train_pairs))
     print("Validation samples: ", len(val_pairs))
@@ -808,6 +833,10 @@ if __name__ == '__main__':
 
     random.shuffle(train_pairs)
     stat_captions(train_pairs)
+
+    # store the configuration
+    pickle.dump([train_pairs, val_pairs, lang], os.path.join(args.store_root, 'exp_config.pkl'))
+
 
     class IUChest_Config(Config):
         StoreRoot = args.store_root
@@ -843,11 +872,9 @@ if __name__ == '__main__':
         sent_decoder = sent_decoder.cuda() if sent_decoder is not None else None
         word_decoder = word_decoder.cuda() if word_decoder is not None else None
 
-    if os.path.isfile(args.load_root):
-        print("Loading model from {}.".format(args.load_root))
+    if args.load_root:
         try:
             load_model(encoder, sent_decoder, word_decoder, args.load_root)
-            print("Loaded!")
         except KeyError:
             print("The model file is invalid. \nExit!")
             import sys
@@ -855,7 +882,7 @@ if __name__ == '__main__':
 
 
     print("--------Train--------")
-    train_iters(encoder, sent_decoder, word_decoder, train_pairs, val_pairs, config, im_load_fn=np.load)
+    train_iters(encoder, sent_decoder, word_decoder, train_pairs, val_pairs, config, im_load_fn=np.load, start_iter=args.start_iter)
 
     print("--------Evaluate--------")
     sentences = evaluate(encoder, sent_decoder, word_decoder, config.TestImagePath, config, np.load)
