@@ -202,11 +202,11 @@ class ConvBlock(torch.nn.Module):
 
     def forward(self, x):
         x = self.conv1(x)
+        x = F.relu(x)
         x = self.bn1(x)
-        x = F.relu(x)
         x = self.conv2(x)
-        x = self.bn2(x)
         x = F.relu(x)
+        x = self.bn2(x)
         return x
 
 class Encoder(torch.nn.Module):
@@ -222,13 +222,17 @@ class Encoder(torch.nn.Module):
         self.conv3 = ConvBlock(64, 128)
         self.mp3 = torch.nn.MaxPool2d(kernel_size=2, stride=2)
         self.conv4 = ConvBlock(128, 256)
+        self.mp4 = torch.nn.MaxPool2d(kernel_size=2, stride=2)
+        self.conv5 = ConvBlock(256, 512)
 
         # expanding path
-        self.up1 = torch.nn.ConvTranspose2d(256, 128, kernel_size=2, stride=2)
-        self.deconv1 = ConvBlock(256, 128)
-        self.up2 = torch.nn.ConvTranspose2d(128, 64, kernel_size=2, stride=2)
-        self.deconv2 = ConvBlock(128, 64)
-        self.up3 = torch.nn.ConvTranspose2d(64, 32, kernel_size=2, stride=2)
+        self.up1 = torch.nn.ConvTranspose2d(512, 256, kernel_size=2, stride=2)
+        self.deconv1 = ConvBlock(512, 256)
+        self.up2 = torch.nn.ConvTranspose2d(256, 128, kernel_size=2, stride=2)
+        self.deconv2 = ConvBlock(256, 128)
+        self.up3 = torch.nn.ConvTranspose2d(128, 64, kernel_size=2, stride=2)
+        self.deconv3 = ConvBlock(128, 64)
+        self.up4 = torch.nn.ConvTranspose2d(64, 32, kernel_size=2, stride=2)
         self.outconv = torch.nn.Conv2d(64, config.SegClasses, kernel_size=1, padding=0)
 
         # image embedding: deep layers
@@ -244,16 +248,20 @@ class Encoder(torch.nn.Module):
         x_60 = self.conv3(x_60)
         x_30 = self.mp3(x_60)
         x_30 = self.conv4(x_30)
+        x_15 = self.mp4(x_30)
+        x_15 = self.conv5(x_15)
 
         # expanding
-        _x_60 = torch.cat([self.up1(x_30), x_60], dim=1)
-        _x_60 = self.deconv1(_x_60)
-        _x_120 = torch.cat([self.up2(_x_60), x_120], dim=1)
-        _x_120 = self.deconv2(_x_120)
-        _x_240 = torch.cat([self.up3(_x_120), x_240], dim=1)
+        _x_30 = torch.cat([self.up1(x_15), x_30], dim=1)
+        _x_30 = self.deconv1(_x_30)
+        _x_60 = torch.cat([self.up2(_x_30), x_60], dim=1)
+        _x_60 = self.deconv2(_x_60)
+        _x_120 = torch.cat([self.up3(_x_60), x_120], dim=1)
+        _x_120 = self.deconv3(_x_120)
+        _x_240 = torch.cat([self.up4(_x_120), x_240], dim=1)
         output = self.outconv(_x_240)
 
-        feature = x_30
+        feature = x_15
         embedding = self.linear(feature.view(-1))
         return embedding.view(1, -1), output
 
@@ -851,7 +859,7 @@ if __name__ == '__main__':
         DICT_SIZE = len(lang)
 
         # Shape of feature map extracted from CNN
-        FeatureShape = (256, 30, 30)
+        FeatureShape = (512, 15, 15)
 
         # Train Configuration
         OnlySeg = True
