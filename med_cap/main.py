@@ -622,6 +622,8 @@ def evaluate(encoder, sent_decoder, word_decoder, imagepath, config, im_load_fn)
 
     # image representation
     im_embed, pred_seg = encoder(input_variable)
+    np.save(os.path.join(config.StoreRoot, 'truth'), seg_variable.numpy())
+    np.save(os.path.join(config.StoreRoot, 'pred'), pred_seg.data.numpy())
 
     if config.OnlySeg:
         criterion = torch.nn.CrossEntropyLoss()
