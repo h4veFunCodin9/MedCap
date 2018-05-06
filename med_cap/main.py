@@ -215,25 +215,25 @@ class Encoder(torch.nn.Module):
         self.embedding_size = config.IM_EmbeddingSize
 
         # contracting path
-        self.conv1 = ConvBlock(4, 32)
+        self.conv1 = ConvBlock(4, 64)
         self.mp1 = torch.nn.MaxPool2d(kernel_size=2, stride=2)
-        self.conv2 = ConvBlock(32, 64)
+        self.conv2 = ConvBlock(64, 128)
         self.mp2 = torch.nn.MaxPool2d(kernel_size=2, stride=2)
-        self.conv3 = ConvBlock(64, 128)
+        self.conv3 = ConvBlock(128, 256)
         self.mp3 = torch.nn.MaxPool2d(kernel_size=2, stride=2)
-        self.conv4 = ConvBlock(128, 256)
+        self.conv4 = ConvBlock(256, 512)
         self.mp4 = torch.nn.MaxPool2d(kernel_size=2, stride=2)
-        self.conv5 = ConvBlock(256, 512)
+        self.conv5 = ConvBlock(512, 1024)
 
         # expanding path
-        self.up1 = torch.nn.ConvTranspose2d(512, 256, kernel_size=2, stride=2)
-        self.deconv1 = ConvBlock(512, 256)
-        self.up2 = torch.nn.ConvTranspose2d(256, 128, kernel_size=2, stride=2)
-        self.deconv2 = ConvBlock(256, 128)
-        self.up3 = torch.nn.ConvTranspose2d(128, 64, kernel_size=2, stride=2)
-        self.deconv3 = ConvBlock(128, 64)
-        self.up4 = torch.nn.ConvTranspose2d(64, 32, kernel_size=2, stride=2)
-        self.outconv = torch.nn.Conv2d(64, config.SegClasses, kernel_size=1, padding=0)
+        self.up1 = torch.nn.ConvTranspose2d(1024, 512, kernel_size=2, stride=2)
+        self.deconv1 = ConvBlock(1024, 512)
+        self.up2 = torch.nn.ConvTranspose2d(512, 256, kernel_size=2, stride=2)
+        self.deconv2 = ConvBlock(512, 256)
+        self.up3 = torch.nn.ConvTranspose2d(256, 128, kernel_size=2, stride=2)
+        self.deconv3 = ConvBlock(256, 128)
+        self.up4 = torch.nn.ConvTranspose2d(128, 64, kernel_size=2, stride=2)
+        self.outconv = torch.nn.Conv2d(128, config.SegClasses, kernel_size=1, padding=0)
 
         # image embedding: deep layers
         shape = config.FeatureShape
@@ -859,7 +859,7 @@ if __name__ == '__main__':
         DICT_SIZE = len(lang)
 
         # Shape of feature map extracted from CNN
-        FeatureShape = (512, 15, 15)
+        FeatureShape = (1024, 15, 15)
 
         # Train Configuration
         OnlySeg = True
