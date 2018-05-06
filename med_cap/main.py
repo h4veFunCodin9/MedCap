@@ -7,7 +7,7 @@ import numpy as np
 import unicodedata
 import re, random
 import time, math
-import os, sys
+import os, pickle
 
 import skimage.transform as T
 
@@ -275,16 +275,24 @@ def save_model(encoder, sent_decoder, word_decoder, store_root, suffix=""):
 
 
 def load_model(encoder, sent_decoder, word_decoder, load_root):
-    print("Loading models from '{}' ...".format(load_root))
     encoder_path = os.path.join(load_root, 'encoder')
     sent_decoder_path = os.path.join(load_root, 'sent_decoder')
     word_decoder_path = os.path.join(load_root, 'word_decoder')
 
-    encoder.load_state_dict(torch.load(encoder_path))
-    sent_decoder.load_state_dict(torch.load(sent_decoder_path))
-    word_decoder.load_state_dict(torch.load(word_decoder_path))
-    print("Loaded.")
+    if os.path.isfile(encoder_path):
+        print("Loading the model for 'encoder' from '{}' ...".format(encoder_path))
+        encoder.load_state_dict(torch.load(encoder_path))
+        print("Loaded!")
 
+    if os.path.isfile(sent_decoder_path):
+        print("Loading the model for 'sent_decoder' from '{}' ...".format(sent_decoder_path))
+        sent_decoder.load_state_dict(torch.load(sent_decoder_path))
+        print("Loaded!")
+
+    if os.path.isfile(word_decoder_path):
+        print("Loading the model for 'word_decoder' from '{}' ...".format(word_decoder_path))
+        word_decoder.load_state_dict(torch.load(word_decoder_path))
+        print("Loaded!")
 
 ###################################
 # Train and evaluate functionality
@@ -465,20 +473,10 @@ def train_iters(encoder, sent_decoder, word_decoder, train_pairs, val_pairs, con
                 print_stop_loss_avg = print_stop_loss_total / print_every
                 print_caption_loss_avg = print_caption_loss_total / print_every
 
-                metrics = evaluate_pairs(encoder, sent_decoder, word_decoder, val_pairs, config, n=10, im_load_fn=im_load_fn)
-                print('[Iter: %d, Batch: %d]%s (%d %d%%) loss = %.3f, stop_loss = %.3f, caption_loss = %.3f' %
+                bleu_scores = evaluate_pairs(encoder, sent_decoder, word_decoder, val_pairs, config, n=10, im_load_fn=im_load_fn)
+                print('[Iter: %d, Batch: %d]%s (%d %d%%) loss = %.3f, stop_loss = %.3f, caption_loss = %.3f, bleu_score = [%.3f, %.3f, %.3f, %.3f]' %
                     (iter, batch_index, time_since(start, dataset_index / dataset_size), dataset_index, dataset_index / dataset_size * 100,
-                                                print_loss_avg, print_stop_loss_avg, print_caption_loss_avg), end=" ")
-                for k, v in metrics.items():
-                    if isinstance(v, list):
-                        print(k, end=": ")
-                        for vi in v:
-                            print("{:.3f}".format(vi), end=' ')
-                        print(";", end=' ')
-                    else:
-                        print(k+": {:.3f}".format(v), end=" ")
-                print("")
-                sys.stdout.flush()
+                                                      print_loss_avg, print_stop_loss_avg, print_caption_loss_avg, bleu_scores[0], bleu_scores[1], bleu_scores[2], bleu_scores[3])) 
 
                 print_loss_total, print_stop_loss_total, print_caption_loss_total = 0, 0, 0
 
@@ -497,16 +495,8 @@ def train_iters(encoder, sent_decoder, word_decoder, train_pairs, val_pairs, con
                 plot_stop_loss_total = 0
                 plot_caption_loss_total = 0
 
-        metrics = evaluate_pairs(encoder, sent_decoder, word_decoder, val_pairs, config, im_load_fn=im_load_fn)
-        print("Validation:")
-        for k, v in metrics.items():
-            if isinstance(v, list):
-                print(k, end=": ")
-                for vi in v:
-                    print("{:.3f}".format(vi), end=' ')
-                print("")
-            else:
-                print(k + ": {:.3f}".format(v))
+        val_bleu_scores = evaluate_pairs(encoder, sent_decoder, word_decoder, val_pairs, config, im_load_fn=im_load_fn)
+        print("[Iter {}] Validation BLEU: {:.3f} {:.3f} {:.3f} {:.3f}".format(iter, val_bleu_scores[0], val_bleu_scores[1], val_bleu_scores[2], val_bleu_scores[3]))
 
         save_model(encoder, sent_decoder, word_decoder, config.StoreRoot, suffix='_'+str(iter))
 
@@ -578,7 +568,7 @@ def evaluate_pairs(encoder, sent_decoder, word_decoder, pairs, config, im_load_f
 
     num = len(pairs)
 
-    truths, preds = {},{}
+    bleu_scores = []
     for i in range(num):
         if verbose:
             print('{}/{}\r'.format(i, num), end='')
@@ -586,9 +576,20 @@ def evaluate_pairs(encoder, sent_decoder, word_decoder, pairs, config, im_load_f
         truth_cap = pair[1]
         pred_cap = evaluate(encoder, sent_decoder, word_decoder, pair[0], config, im_load_fn=im_load_fn)
 
-        truths[str(i)] = '。'.join(truth_cap)
-        preds[str(i)] = '。'.join([''.join(sent) for sent in pred_cap])
+        truth = '。'.join(truth_cap)
+        pred = '。'.join([''.join(sent) for sent in pred_cap])
 
+        # segmentation
+        import fool
+        truth = fool.cut(truth)
+        pred = fool.cut(pred)[0]
+        # compute bleu
+        import nltk
+        cur_score_1 = nltk.translate.bleu(truth, pred, weights=[1,0,0,0])
+        cur_score_2 = nltk.translate.bleu(truth, pred, weights=[0,1,0,0])
+        cur_score_3 = nltk.translate.bleu(truth, pred, weights=[0,0,1,0])
+        cur_score_4 = nltk.translate.bleu(truth, pred, weights=[0,0,0,1])
+        bleu_scores.append([cur_score_1, cur_score_2, cur_score_3, cur_score_4])
         '''plt.figure()
         fig, ax = plt.subplots()
         im = np.array(Image.open(pair[0]))
@@ -596,10 +597,7 @@ def evaluate_pairs(encoder, sent_decoder, word_decoder, pairs, config, im_load_f
         plt.title('%s\nGT:%s' % (truth_cap, pred_cap))
         plt.axis('off')
         plt.savefig(os.path.join(store_path, str(i)+'.png'))'''
-
-    metrics_computer = Metrics()
-    metrics = metrics_computer.compute_set_score(truths, preds)
-    return metrics
+    return np.mean(np.array(bleu_scores), axis=0)
 
 
 def display_randomly(encoder, sent_decoder, word_decoder, val_pairs, config, im_load_fn):
@@ -684,7 +682,7 @@ if __name__ == '__main__':
                         # "/mnt/md1/lztao/models/med_cap",
                         metavar='path/to/store/models',
                         help="Store model")
-    parser.add_argument('--load-root', required=False, default='.',
+    parser.add_argument('--load-root', required=False, default=None,
                         metavar='path/to/saved/models',
                         help="the path to models for restore.")
     parser.add_argument('--val-prop', required=False, default=0.1,
@@ -699,13 +697,17 @@ if __name__ == '__main__':
     print("Validation Proportionate: ", args.val_prop)
     print("Store root: ", args.store_root)
 
-    print("\nRead Captions....")
-    trainval_pairs = read_captions(args.trainval_cap, args.im)
+    if args.load_root is not None:
+        print("Loading from last experiment settings...")
+        [train_pairs, val_pairs, lang] = pickle.load(open(os.path.join(args.store_root, 'exp_config.pkl'),'rb'))
+    else:
+        print("\nRead Captions....")
+        trainval_pairs = read_captions(args.trainval_cap, args.im)
+
+        train_pairs, val_pairs = split_train_val(trainval_pairs, val_prop=args.val_prop)
+
+        lang = prepare_dict(train_pairs, mode=args.seg_mode)
     test_pairs = read_captions(args.test_cap, args.im)
-
-    train_pairs, val_pairs = split_train_val(trainval_pairs, val_prop=args.val_prop)
-
-    lang = prepare_dict(train_pairs, mode=args.seg_mode)
     stat_lang(lang)
     print("Train samples: ", len(train_pairs))
     print("Validation samples: ", len(val_pairs))
@@ -713,6 +715,9 @@ if __name__ == '__main__':
 
     random.shuffle(train_pairs)
     stat_captions(train_pairs)
+
+    # store the configuration
+    pickle.dump([train_pairs, val_pairs, lang], open(os.path.join(args.store_root, 'exp_config.pkl'), 'wb'))
 
     class IUChest_Config(Config):
         StoreRoot = args.store_root
@@ -742,11 +747,9 @@ if __name__ == '__main__':
         sent_decoder = sent_decoder.cuda()
         word_decoder = word_decoder.cuda()
 
-    if os.path.isfile(args.load_root):
-        print("Loading model from {}.".format(args.load_root))
+    if args.load_root:
         try:
             load_model(encoder, sent_decoder, word_decoder, args.load_root)
-            print("Loaded!")
         except KeyError:
             print("The model file is invalid. \nExit!")
             import sys
