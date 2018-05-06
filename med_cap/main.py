@@ -541,8 +541,9 @@ def train_iters(encoder, sent_decoder, word_decoder, train_pairs, val_pairs, con
             encoder_scheduler.step(seg_loss)
 
             loss = stop_loss + caption_loss + seg_loss
-            sent_decoder_scheduler.step(loss)
-            word_decoder_scheduler.step(loss)
+            if not config.OnlySeg:
+                sent_decoder_scheduler.step(loss)
+                word_decoder_scheduler.step(loss)
 
             print_loss_total += loss
             print_seg_loss_total += seg_loss
@@ -816,15 +817,16 @@ if __name__ == '__main__':
 
     if args.load_root is not None:
         print("Loading from last experiment settings...")
-        [train_pairs, val_pairs, lang] = pickle.load(os.path.join(args.store_root, 'exp_config.pkl'))
+        [train_pairs, val_pairs, lang] = pickle.load(open(os.path.join(args.store_root, 'exp_config.pkl'), 'rb'))
     else:
         print("\nRead Captions....")
         trainval_pairs = read_captions(args.trainval_cap, args.im)
-        test_pairs = read_captions(args.test_cap, args.im)
 
         train_pairs, val_pairs = split_train_val(trainval_pairs, val_prop=args.val_prop)
 
         lang = prepare_dict(train_pairs, mode=args.seg_mode)
+
+    test_pairs = read_captions(args.test_cap, args.im)
 
     stat_lang(lang)
     print("Train samples: ", len(train_pairs))
@@ -835,7 +837,7 @@ if __name__ == '__main__':
     stat_captions(train_pairs)
 
     # store the configuration
-    pickle.dump([train_pairs, val_pairs, lang], os.path.join(args.store_root, 'exp_config.pkl'))
+    pickle.dump([train_pairs, val_pairs, lang], open(os.path.join(args.store_root, 'exp_config.pkl'), 'wb'))
 
 
     class IUChest_Config(Config):
@@ -852,7 +854,7 @@ if __name__ == '__main__':
         FeatureShape = (256, 30, 30)
 
         # Train Configuration
-        OnlySeg = False
+        OnlySeg = True
 
         def __int__(self):
             super(IUChest_Config, self).__init__()
