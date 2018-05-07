@@ -498,7 +498,8 @@ def train_iters(encoder, sent_decoder, word_decoder, train_pairs, val_pairs, con
         val_bleu_scores = evaluate_pairs(encoder, sent_decoder, word_decoder, val_pairs, config, im_load_fn=im_load_fn)
         print("[Iter {}] Validation BLEU: {:.3f} {:.3f} {:.3f} {:.3f}".format(iter, val_bleu_scores[0], val_bleu_scores[1], val_bleu_scores[2], val_bleu_scores[3]))
 
-        save_model(encoder, sent_decoder, word_decoder, config.StoreRoot, suffix='_'+str(iter))
+        if iter % 50 == 0:
+            save_model(encoder, sent_decoder, word_decoder, config.StoreRoot, suffix='_'+str(iter))
 
     show_plot(plot_losses, config.store_root, name="loss")
     show_plot(plot_stop_losses, config.store_root, name="stop_loss")
