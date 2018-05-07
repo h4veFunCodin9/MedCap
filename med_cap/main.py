@@ -499,14 +499,14 @@ def train_iters(encoder, sent_decoder, word_decoder, train_pairs, val_pairs, con
     plot_every = config.PlotFrequency
 
     encoder_optimizer = torch.optim.SGD(params=encoder.parameters(), lr=config.LR, momentum=config.Momentum)
-    encoder_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(encoder_optimizer, mode='min', patience=5, verbose=True)
+    encoder_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(encoder_optimizer, mode='min', patience=10, verbose=True)
     sent_decoder_optimizer, word_decoder_optimizer = None, None
     sent_decoder_scheduler, word_decoder_scheduler = None, None
     if not config.OnlySeg:
         sent_decoder_optimizer = torch.optim.SGD(params=sent_decoder.parameters(), lr=config.LR, momentum=config.Momentum)
-        sent_decoder_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(sent_decoder_optimizer, mode='min', patience=5, verbose=True)
+        sent_decoder_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(sent_decoder_optimizer, mode='min', patience=10, verbose=True)
         word_decoder_optimizer = torch.optim.SGD(params=word_decoder.parameters(), lr=config.LR, momentum=config.Momentum)
-        word_decoder_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(word_decoder_optimizer, mode='min', patience=5, verbose=True)
+        word_decoder_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(word_decoder_optimizer, mode='min', patience=10, verbose=True)
 
     criterion = torch.nn.CrossEntropyLoss()
 
@@ -527,7 +527,7 @@ def train_iters(encoder, sent_decoder, word_decoder, train_pairs, val_pairs, con
     plot_stop_losses = []
     plot_caption_losses = []
 
-    for iter in range(start_iter, n_iters+start_iter):
+    for iter in range(int(start_iter), n_iters+int(start_iter)):
         random.shuffle(train_pairs)
         dataset_index, batch_index, dataset_size = 0, 0, len(train_pairs)
         while dataset_index + batch_size < dataset_size:
@@ -546,12 +546,12 @@ def train_iters(encoder, sent_decoder, word_decoder, train_pairs, val_pairs, con
                                             sent_decoder, word_decoder,encoder_optimizer, sent_decoder_optimizer,
                                             word_decoder_optimizer, criterion, config)
             # dynamic adjust the learning rate
-            encoder_scheduler.step(seg_loss)
+            #encoder_scheduler.step(seg_loss)
 
             loss = stop_loss + caption_loss + seg_loss
-            if not config.OnlySeg:
-                sent_decoder_scheduler.step(loss)
-                word_decoder_scheduler.step(loss)
+            #if not config.OnlySeg:
+            #    sent_decoder_scheduler.step(loss)
+            #    word_decoder_scheduler.step(loss)
 
             print_loss_total += loss
             print_seg_loss_total += seg_loss
@@ -622,8 +622,8 @@ def evaluate(encoder, sent_decoder, word_decoder, imagepath, config, im_load_fn)
 
     # image representation
     im_embed, pred_seg = encoder(input_variable)
-    np.save(os.path.join(config.StoreRoot, 'truth'), seg_variable.numpy())
-    np.save(os.path.join(config.StoreRoot, 'pred'), pred_seg.data.numpy())
+    np.save(os.path.join(config.StoreRoot, 'truth'), seg_variable.data.cpu().numpy())
+    np.save(os.path.join(config.StoreRoot, 'pred'), pred_seg.data.cpu().numpy())
 
     if config.OnlySeg:
         criterion = torch.nn.CrossEntropyLoss()
@@ -827,7 +827,7 @@ if __name__ == '__main__':
 
     if args.load_root is not None:
         print("Loading from last experiment settings...")
-        [train_pairs, val_pairs, lang] = pickle.load(open(os.path.join(args.store_root, 'exp_config.pkl'), 'rb'))
+        [train_pairs, val_pairs, lang] = pickle.load(open(os.path.join(args.load_root, 'exp_config.pkl'), 'rb'))
     else:
         print("\nRead Captions....")
         trainval_pairs = read_captions(args.trainval_cap, args.im)
@@ -864,7 +864,7 @@ if __name__ == '__main__':
         FeatureShape = (1024, 15, 15)
 
         # Train Configuration
-        OnlySeg = True
+        OnlySeg = False
 
         def __int__(self):
             super(IUChest_Config, self).__init__()
