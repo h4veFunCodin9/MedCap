@@ -570,6 +570,10 @@ def evaluate_pairs(encoder, sent_decoder, word_decoder, pairs, config, im_load_f
     num = len(pairs)
 
     bleu_scores = []
+ 
+    truth_cap_file = open(os.path.join(config.StoreRoot, 'truth_cap.txt'), 'w+')
+    pred_cap_file = open(os.path.join(config.StoreRoot, 'pred_cap.txt'), 'w+')
+
     for i in range(num):
         if verbose:
             print('{}/{}\r'.format(i, num), end='')
@@ -579,6 +583,10 @@ def evaluate_pairs(encoder, sent_decoder, word_decoder, pairs, config, im_load_f
 
         truth = '。'.join(truth_cap)
         pred = '。'.join([''.join(sent) for sent in pred_cap])
+        truth_cap_file.write(truth)
+        truth_cap_file.write('\n')
+        pred_cap_file.write(pred)
+        pred_cap_file.write('\n')
 
         # segmentation
         import fool
@@ -598,6 +606,8 @@ def evaluate_pairs(encoder, sent_decoder, word_decoder, pairs, config, im_load_f
         plt.title('%s\nGT:%s' % (truth_cap, pred_cap))
         plt.axis('off')
         plt.savefig(os.path.join(store_path, str(i)+'.png'))'''
+    truth_cap_file.close()
+    pred_cap_file.close()
     return np.mean(np.array(bleu_scores), axis=0)
 
 
@@ -757,12 +767,12 @@ if __name__ == '__main__':
             sys.exit(0)
 
 
-    print("--------Train--------")
-    train_iters(encoder, sent_decoder, word_decoder, train_pairs, val_pairs, config, im_load_fn=np.load)
+#    print("--------Train--------")
+#    train_iters(encoder, sent_decoder, word_decoder, train_pairs, val_pairs, config, im_load_fn=np.load)
 
-    print("--------Evaluate--------")
-    sentences = evaluate(encoder, sent_decoder, word_decoder, config.TestImagePath, config, np.load)
-    print('. '.join([' '.join(sent) for sent in sentences]))
+#    print("--------Evaluate--------")
+#    sentences = evaluate(encoder, sent_decoder, word_decoder, config.TestImagePath, config, np.load)
+#    print('. '.join([' '.join(sent) for sent in sentences]))
 
     print("--------Test--------")
     evaluate_pairs(encoder, sent_decoder, word_decoder, test_pairs, config, verbose=True, im_load_fn=np.load)
