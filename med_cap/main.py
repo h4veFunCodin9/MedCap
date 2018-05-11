@@ -608,12 +608,13 @@ def train_iters(encoder, sent_decoder, word_decoder, train_pairs, val_pairs, con
             val_bleu_scores = evaluate_pairs(encoder, sent_decoder, word_decoder, val_pairs, config, im_load_fn=im_load_fn)
             print("[Iter {}] Validation BLEU: {:.3f} {:.3f} {:.3f} {:.3f}".format(iter, val_bleu_scores[0], val_bleu_scores[1], val_bleu_scores[2], val_bleu_scores[3]))
 
-        save_model(encoder, sent_decoder, word_decoder, config, suffix='_'+str(iter))
+        if iter % 50 == 0:
+            save_model(encoder, sent_decoder, word_decoder, config, suffix='_'+str(iter))
 
-    show_plot(plot_losses, config.store_root, name="loss")
-    show_plot(plot_seg_losses, config.store_root, name='seg_loss')
-    show_plot(plot_stop_losses, config.store_root, name="stop_loss")
-    show_plot(plot_caption_losses, config.store_root, name="caption_loss")
+    show_plot(plot_losses, config.StoreRoot, name="loss")
+    show_plot(plot_seg_losses, config.StoreRoot, name='seg_loss')
+    show_plot(plot_stop_losses, config.StoreRoot, name="stop_loss")
+    show_plot(plot_caption_losses, config.StoreRoot, name="caption_loss")
 
 
 # predict the caption for an image
@@ -688,6 +689,9 @@ def evaluate_pairs(encoder, sent_decoder, word_decoder, pairs, config, im_load_f
 
     bleu_scores = []
     loss = 0
+    
+    truth_cap_file = open(os.path.join(config.StoreRoot, 'truth_cap.txt'), 'w+')
+    pred_cap_file = open(os.path.join(config.StoreRoot, 'pred_cap.txt'), 'w+')
     for i in range(num):
         if verbose:
             print('{}/{}\r'.format(i, num), end='')
@@ -702,6 +706,11 @@ def evaluate_pairs(encoder, sent_decoder, word_decoder, pairs, config, im_load_f
 
         truth = '。'.join(truth_cap)
         pred = '。'.join([''.join(sent) for sent in pred_cap])
+
+        truth_cap_file.write(truth)
+        truth_cap_file.write('\n')
+        pred_cap_file.write(pred)
+        pred_cap_file.write('\n')
 
         # segmentation
         import fool
@@ -721,6 +730,9 @@ def evaluate_pairs(encoder, sent_decoder, word_decoder, pairs, config, im_load_f
         plt.title('%s\nGT:%s' % (truth_cap, pred_cap))
         plt.axis('off')
         plt.savefig(os.path.join(store_path, str(i)+'.png'))'''
+
+    truth_cap_file.close()
+    pred_cap_file.close()
     if not config.OnlySeg:
         return np.mean(np.array(bleu_scores), axis=0)
     else:
@@ -791,19 +803,19 @@ if __name__ == '__main__':
     import argparse
 
     parser = argparse.ArgumentParser(description="Medical Captioning")
-    parser.add_argument('--im', required=False,
+    parser.add_argument('--im', required=True,
                         default='/Users/luzhoutao/courses/毕业论文/IU Chest X-Ray/dataset/BRATS/images',
                         metavar="path/to/image/dataset",
                         help="The image dataset")
-    parser.add_argument('--trainval-cap', required=False,
+    parser.add_argument('--trainval-cap', required=True,
                         default="/Users/luzhoutao/courses/毕业论文/IU Chest X-Ray/dataset/BRATS/train_captions.txt",
                         metavar='path/to/trainval/findings',
                         help="The medical image captions for training and validation")
-    parser.add_argument('--test-cap', required=False,
+    parser.add_argument('--test-cap', required=True,
                         default="/Users/luzhoutao/courses/毕业论文/IU Chest X-Ray/dataset/BRATS/test_captions.txt",
                         metavar="path/to/test/findings",
                         help='The medical image captions for testing')
-    parser.add_argument('--store-root', required=False,
+    parser.add_argument('--store-root', required=True,
                         default='/Users/luzhoutao/courses/毕业论文/IU Chest X-Ray/MedCap/checkpoints',
                         # "/mnt/md1/lztao/models/med_cap",
                         metavar='path/to/store/models',
@@ -893,12 +905,12 @@ if __name__ == '__main__':
             sys.exit(0)
 
 
-    print("--------Train--------")
-    train_iters(encoder, sent_decoder, word_decoder, train_pairs, val_pairs, config, im_load_fn=np.load, start_iter=args.start_iter)
+#    print("--------Train--------")
+#    train_iters(encoder, sent_decoder, word_decoder, train_pairs, val_pairs, config, im_load_fn=np.load, start_iter=args.start_iter)
 
-    print("--------Evaluate--------")
-    sentences = evaluate(encoder, sent_decoder, word_decoder, config.TestImagePath, config, np.load)
-    print('. '.join([' '.join(sent) for sent in sentences]))
+#    print("--------Evaluate--------")
+#    sentences = evaluate(encoder, sent_decoder, word_decoder, config.TestImagePath, config, np.load)
+#    print('. '.join([' '.join(sent) for sent in sentences]))
 
     print("--------Test--------")
     evaluate_pairs(encoder, sent_decoder, word_decoder, test_pairs, config, verbose=True, im_load_fn=np.load)
