@@ -3,7 +3,8 @@
 #########################
 
 class Config(object):
-    # Segmentation classes
+
+   # Segmentation classes
     SegClasses = 4
     # image embedding size
     IM_EmbeddingSize = 512
@@ -29,20 +30,30 @@ class Config(object):
 
     # Training procedure
     NumIters = 500
-    BatchSize = 8
+    BatchSize = 1
     PrintFrequency = 1
     PlotFrequency = 1
 
-    # Path for display example
-    TestImagePath = '/mnt/md1/lztao/dataset/IU_Chest_XRay/NLMCXR_png/CXR1100_IM-0068-1001.png'
-    '''
-    The cardiomediastinal silhouette and pulmonary vasculature are within normal limits. 
-    There is no pneumothorax or pleural effusion. There are no focal areas of consolidation. Cholecystectomy clips are present. 
-    Small T-spine osteophytes. There is biapical pleural thickening, unchanged from prior. Mildly hyperexpanded lungs.
-    '''
 
-    def __init__(self):
-        super(Config, self).__init__()
+class BRATSConfig(Config):
+
+    def __init__(self, args):
+        super(BRATSConfig, self).__init__()
+
+        self.StoreRoot = args.store_root
+
+        # the maximum number of sentences and maximum number of words per sentence
+        self.MAX_SENT_NUM = 15
+        self.MAX_WORD_NUM = 60
+
+        # dictionary size
+        #self.DICT_SIZE = len(lang)
+
+        # Shape of feature map extracted from CNN
+        self.FeatureShape = (1024, 15, 15)
+
+        # Train Configuration
+        self.OnlySeg = False
 
     def display(self):
         print("Configuration: ")
