@@ -25,7 +25,7 @@ class Config(object):
     FeatureShape = (512, 16, 16)
 
     # Training optimizer hyper-parameter
-    LR = 1.0e-3
+    LR = 1.0e-5
     Momentum = 0.9
 
     # Training procedure
@@ -33,6 +33,7 @@ class Config(object):
     BatchSize = 16
     PrintFrequency = 1
     PlotFrequency = 1
+    SaveFrequency = 50
 
 
 class BRATSConfig(Config):
@@ -53,7 +54,7 @@ class BRATSConfig(Config):
         self.FeatureShape = (1024, 15, 15)
 
         # Train Configuration
-        self.OnlySeg = True
+        self.OnlySeg = False
 
     def display(self):
         print("Configuration: ")

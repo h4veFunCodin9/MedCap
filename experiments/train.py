@@ -245,7 +245,7 @@ def train_iters(model, train_dataset, val_dataset, config, start_iter=1):
                                     val_iou[0], val_iou[1], val_iou[2], val_iou[3],
                                     val_bleu_scores[0], val_bleu_scores[1], val_bleu_scores[2], val_bleu_scores[3]))
 
-        if iter % 50 == 0:
+        if iter % config.SaveFrequency == 0:
             save_model(model, config, suffix='_'+str(iter))
 
     show_plot(plot_losses, config.StoreRoot, name="loss")
