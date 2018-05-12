@@ -205,17 +205,18 @@ def train_iters(model, train_dataset, val_dataset, config, start_iter=1):
                     iou, _ = evaluate_pairs(model, train_dataset.lang, val_dataset,
                                          config, np.load)
                     print(
-                        '[Iter: %d, Batch: %d]%s (%d %d%%) loss = %.3f, seg_loss = %.3f, (val) iou = %.3f' %
+                        '[Iter: %d, Batch: %d]%s (%d %d%%) loss = %.3f, seg_loss = %.3f, (val) iou = [%.3f, %.3f, %.3f, %.3f]' %
                         (iter, batch_index, time_since(start, dataset_index / dataset_size), dataset_index,
                          dataset_index / dataset_size * 100,
-                         print_loss_avg, print_seg_loss_avg, iou))
+                         print_loss_avg, print_seg_loss_avg, iou[0], iou[1], iou[2], iou[3]))
                 else:
                     iou, bleu_scores = evaluate_pairs(model, train_dataset.lang, val_dataset, config, np.load)
                     print('[Iter: %d, Batch: %d]%s (%d %d%%) loss = %.3f, seg_loss = %.3f, stop_loss = %.3f, '
-                          'caption_loss = %.3f; Val: iou = %.3f, bleu_score = [%.3f, %.3f, %.3f, %.3f]' %
+                          'caption_loss = %.3f; Val: iou = [%.3f, %.3f, %.3f, %.3f], bleu_score = [%.3f, %.3f, %.3f, %.3f]' %
                     (iter, batch_index, time_since(start, dataset_index / dataset_size), dataset_index,
                      dataset_index / dataset_size * 100,print_loss_avg, print_seg_loss_avg, print_stop_loss_avg,
-                     print_caption_loss_avg, iou, bleu_scores[0], bleu_scores[1], bleu_scores[2], bleu_scores[3]))
+                     print_caption_loss_avg, iou[0], iou[1], iou[2], iou[3],
+                     bleu_scores[0], bleu_scores[1], bleu_scores[2], bleu_scores[3]))
 
                 print_loss_total, print_seg_loss_total, print_stop_loss_total, print_caption_loss_total = 0, 0, 0, 0
 
@@ -240,7 +241,8 @@ def train_iters(model, train_dataset, val_dataset, config, start_iter=1):
 
         if not config.OnlySeg:
             val_iou, val_bleu_scores = evaluate_pairs(model, train_dataset.lang, val_dataset, config, np.load)
-            print("[Iter {}] Validation IOU: {:.3f}; BLEU: {:.3f} {:.3f} {:.3f} {:.3f}".format(iter, val_iou,
+            print("[Iter {}] Validation IOU: {:.3f} {:.3f} {:.3f} {:.3f}; BLEU: {:.3f} {:.3f} {:.3f} {:.3f}".format(iter,
+                                    val_iou[0], val_iou[1], val_iou[2], val_iou[3],
                                     val_bleu_scores[0], val_bleu_scores[1], val_bleu_scores[2], val_bleu_scores[3]))
 
         if iter % 50 == 0:

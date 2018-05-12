@@ -82,16 +82,19 @@ class BLEUCalculate():
 
 class IOUCalculate():
     def __init__(self):
-        self.inter = 0.0
-        self.union = 0.0
+        self.inter = [0.0] * 4
+        self.union = [0.0] * 4
         self.epsilon = 0.0001
 
     def add(self, truth, pred):
-        truth = np.round(truth).astype(np.int16)
-        pred = np.round(pred).astype(np.int16)
+        pred = np.argmax(pred, axis=1).astype(np.int16)
 
-        self.inter += np.sum(np.logical_and(truth, pred))
-        self.union += np.sum(np.logical_or(truth, pred))
+        truth = [truth == 1, truth == 2, truth == 3, truth != 0]
+        pred = [pred == 1, pred == 2, pred == 3, pred != 0]
+
+        for i in range(4):
+            self.inter[i] += np.sum(np.logical_and(truth[i], pred[i]))
+            self.union[i] += np.sum(np.logical_or(truth[i], pred[i]))
 
     def get_iou(self):
-        return (self.inter + self.epsilon) / (self.union + self.epsilon)
+        return [(self.inter[i] + self.epsilon) / (self.union[i] + self.epsilon) for i in range(4)]
