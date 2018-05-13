@@ -200,7 +200,7 @@ def train_iters(model, train_dataset, val_dataset, config, start_iter=1):
                 plot_caption_loss_total = 0
 
         if not config.OnlySeg:
-            val_iou, val_bleu_scores = evaluate_pairs(model, train_dataset.lang, val_dataset, config, np.load)
+            val_iou, val_bleu_scores = evaluate_pairs(model, train_dataset.lang, val_dataset, config)
             print("[Iter {}] Validation IOU: {:.3f} {:.3f} {:.3f} {:.3f}; BLEU: {:.3f} {:.3f} {:.3f} {:.3f}".format(
                 iter, val_iou[0], val_iou[1], val_iou[2], val_iou[3], val_bleu_scores[0], val_bleu_scores[1],
                 val_bleu_scores[2], val_bleu_scores[3]))
