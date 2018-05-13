@@ -20,6 +20,10 @@ class ConvBlock(nn.Module):
         x = self.bn2(x)
         return x
 
+    def init_weight(self):
+        torch.nn.init.xavier_normal(self.conv1.weight, gain=torch.nn.init.calculate_gain('conv2d'))
+        torch.nn.init.xavier_normal(self.conv2.weight, gain=torch.nn.init.calculate_gain('conv2d'))
+
 class Encoder(nn.Module):
     def __init__(self, config):
         super(Encoder, self).__init__()
@@ -75,3 +79,25 @@ class Encoder(nn.Module):
         feature = x_15
         embedding = self.linear(feature.view(-1))
         return embedding.view(1, -1), output
+
+    def init_contract_path(self):
+        print("Initializing the contracting path according to Xavier.")
+        self.conv1.init_weight()
+        self.conv2.init_weight()
+        self.conv3.init_weight()
+        self.conv4.init_weight()
+        self.conv5.init_weight()
+        print('Initialization finished!')
+
+    def feature(self, x):
+        x_240 = self.conv1(x)
+        x_120 = self.mp1(x_240)
+        x_120 = self.conv2(x_120)
+        x_60 = self.mp2(x_120)
+        x_60 = self.conv3(x_60)
+        x_30 = self.mp3(x_60)
+        x_30 = self.conv4(x_30)
+        x_15 = self.mp4(x_30)
+        x_15 = self.conv5(x_15)
+        embedding = self.linear(x_15.view(-1))
+        return embedding

@@ -53,9 +53,6 @@ class BRATSConfig(Config):
         # Shape of feature map extracted from CNN
         self.FeatureShape = (1024, 15, 15)
 
-        # Train Configuration
-        self.OnlySeg = False
-
     def display(self):
         print("Configuration: ")
         for a in dir(self):

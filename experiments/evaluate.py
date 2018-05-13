@@ -11,10 +11,7 @@ def evaluate(encoder, sent_decoder, word_decoder, lang, image_var, config, im_lo
     input_variable= image_var
 
     # image representation
-    im_embed, pred_seg = encoder(input_variable)
-
-    if config.OnlySeg:
-        return pred_seg.data.cpu().numpy()
+    im_embed = encoder.feature(input_variable)
 
     # generate sentence topics and stop distribution
     sent_decoder_hidden = sent_decoder.init_hidden()
@@ -55,7 +52,7 @@ def evaluate(encoder, sent_decoder, word_decoder, lang, image_var, config, im_lo
             word_decoder_input = torch.autograd.Variable(torch.LongTensor([[ni, ]]))
             word_decoder_input = word_decoder_input.cuda() if torch.cuda.is_available() else word_decoder_input
         decoded_caption.append(decoded_sentence)
-    return pred_seg.data.cpu().numpy(), decoded_caption
+    return decoded_caption
 
 
 # randomly choose n images and predict their captions, store the resulted image
@@ -67,9 +64,6 @@ def evaluate_pairs(model, lang, dataset, config, im_load_fn, n=-1, verbose=False
     store_path = os.path.join(config.StoreRoot, 'evaluation')
     if not os.path.exists(store_path):
         os.makedirs(store_path)
-    seg_store_root = os.path.join(store_path, 'seg')
-    if not os.path.exists(seg_store_root):
-        os.makedirs(seg_store_root)
     cap_store_path = os.path.join(store_path, 'captions.csv')
 
     # how many samples to be evaluated
@@ -79,7 +73,6 @@ def evaluate_pairs(model, lang, dataset, config, im_load_fn, n=-1, verbose=False
 
     # metrics calculator
     bleu_calculator = utils.BLEUCalculate()
-    iou_calculator = utils.IOUCalculate()
 
     # logs
     pred_captions = {'id':[], 'caption':[]}
@@ -91,33 +84,20 @@ def evaluate_pairs(model, lang, dataset, config, im_load_fn, n=-1, verbose=False
         # prepare data
         im_var, seg_var = dataset.variable_from_image_path(i)
         raw_pair = dataset.pairs[i]
-        image_name = os.path.basename(raw_pair[0])
         truth_cap = '。'.join(raw_pair[1])
-        truth_seg = seg_var.data.cpu().numpy()
 
         # evaluate
-        pred_seg, pred_cap = None, None
-        if config.OnlySeg:
-            pred_seg = evaluate(encoder, sent_decoder, word_decoder, lang, im_var, config, im_load_fn=im_load_fn)
-        else:
-            pred_seg, pred_cap = evaluate(encoder, sent_decoder, word_decoder, lang, im_var, config, im_load_fn=im_load_fn)
-            pred_cap = '。'.join([''.join(sent) for sent in pred_cap])
+        pred_cap = evaluate(encoder, sent_decoder, word_decoder, lang, im_var, config, im_load_fn=im_load_fn)
+        pred_cap = '。'.join([''.join(sent) for sent in pred_cap])
 
         # metrics
-        assert(pred_seg is not None)
-        iou_calculator.add(truth_seg, pred_seg)
-        if pred_cap is not None:
-            bleu_calculator.add(truth_cap, pred_cap)
-
-        # store seg results
-        np.save(os.path.join(seg_store_root, image_name), pred_seg)
+        bleu_calculator.add(truth_cap, pred_cap)
 
     # store caption results
-    if not config.OnlySeg:
-        df = DataFrame(pred_captions)
-        df.to_csv(cap_store_path)
+    df = DataFrame(pred_captions)
+    df.to_csv(cap_store_path)
 
-    return iou_calculator.get_iou(), bleu_calculator.get_scores()
+    return bleu_calculator.get_scores()
 
 
 def display_randomly(model, lang, dataset, config, im_load_fn):
@@ -130,5 +110,5 @@ def display_randomly(model, lang, dataset, config, im_load_fn):
     raw_pair = dataset.pairs[i]
     truth_cap = '。'.join(raw_pair[1])
     print("Truth: ", truth_cap)
-    seg, pred_cap = evaluate(encoder, sent_decoder, word_decoder, lang, im_var, config, im_load_fn=im_load_fn)
+    pred_cap = evaluate(encoder, sent_decoder, word_decoder, lang, im_var, config, im_load_fn=im_load_fn)
     print("Prediction:", '。'.join([''.join(sent) for sent in pred_cap]))

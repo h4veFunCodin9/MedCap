@@ -5,10 +5,12 @@ from .decoder import SentDecoder, WordDecoder
 
 def get_model(config):
     encoder = Encoder(config)
-    sent_decoder, word_decoder = None, None
-    if not config.OnlySeg:
-        sent_decoder = SentDecoder(config)
-        word_decoder = WordDecoder(config)
+
+    # without segmentation-oriented initialization
+    encoder.init_contract_path()
+
+    sent_decoder = SentDecoder(config)
+    word_decoder = WordDecoder(config)
 
     if torch.cuda.is_available():
         encoder = encoder.cuda()
@@ -24,9 +26,8 @@ def save_model(model, config, suffix=""):
     # save the model
     print("Saving models...")
     torch.save(model['encoder'].state_dict(), os.path.join(model_root, "encoder_"+suffix))
-    if not config.OnlySeg:
-        torch.save(model['sent_decoder'].state_dict(), os.path.join(model_root, "sent_decoder_"+suffix))
-        torch.save(model['word_decoder'].state_dict(), os.path.join(model_root, "word_decoder_"+suffix))
+    torch.save(model['sent_decoder'].state_dict(), os.path.join(model_root, "sent_decoder_"+suffix))
+    torch.save(model['word_decoder'].state_dict(), os.path.join(model_root, "word_decoder_"+suffix))
     print("Done!")
 
 
