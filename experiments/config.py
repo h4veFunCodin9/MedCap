@@ -14,9 +14,8 @@ class Config(object):
     WordLSTM_HiddenSize = 512
 
     # Weight for 2 losses whose sum should be 1
-    StopLoss_Weight = 0.2
-    CapLoss_Weight = 0.3
-    SegLoss_Weight = 0.3
+    StopLoss_Weight = 0.5
+    CapLoss_Weight = 0.5
 
     # Size of topic vector (should be same as the word LSTM hidden size)
     TopicSize = 512
