@@ -1,7 +1,7 @@
 import torch
 import torch.nn.functional as F
 
-class SentDecoder(torch.nn.Module):
+'''class SentDecoder(torch.nn.Module):
     def __init__(self, config):
         super(SentDecoder, self).__init__()
         self.hidden_size = config.SentLSTM_HiddenSize
@@ -40,13 +40,13 @@ class SentDecoder(torch.nn.Module):
     def init_hidden(self):
         hidden = torch.autograd.Variable(torch.zeros(1, 1, self.hidden_size))
         hidden = hidden.cuda() if torch.cuda.is_available() else hidden
-        return hidden
+        return hidden'''
 
 
-class WordDecoder(torch.nn.Module):
+class Decoder(torch.nn.Module):
     def __init__(self, config):
-        super(WordDecoder, self).__init__()
-        self.hidden_size = config.WordLSTM_HiddenSize
+        super(Decoder, self).__init__()
+        self.hidden_size = config.LSTM_HiddenSize
 
         self.embedding = torch.nn.Embedding(config.DICT_SIZE, self.hidden_size)
         self.gru = torch.nn.GRU(self.hidden_size, self.hidden_size)

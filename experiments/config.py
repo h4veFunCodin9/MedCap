@@ -10,16 +10,11 @@ class Config(object):
     IM_EmbeddingSize = 512
 
     # Size of hidden state in RNN
-    SentLSTM_HiddenSize = 512
-    WordLSTM_HiddenSize = 512
+    LSTM_HiddenSize = 512
 
     # Weight for 2 losses whose sum should be 1
-    StopLoss_Weight = 0.2
-    CapLoss_Weight = 0.3
-    SegLoss_Weight = 0.3
-
-    # Size of topic vector (should be same as the word LSTM hidden size)
-    TopicSize = 512
+    SegLoss_Weight = 0.5
+    CapLoss_Weight = 0.5
 
     # Shape of feature map extracted from CNN
     FeatureShape = (512, 16, 16)
@@ -44,8 +39,7 @@ class BRATSConfig(Config):
         self.StoreRoot = args.store_root
 
         # the maximum number of sentences and maximum number of words per sentence
-        self.MAX_SENT_NUM = 15
-        self.MAX_WORD_NUM = 60
+        self.MAX_WORD_NUM = 180
 
         # dictionary size
         #self.DICT_SIZE = len(lang)

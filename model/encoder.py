@@ -74,4 +74,4 @@ class Encoder(nn.Module):
 
         feature = x_15
         embedding = self.linear(feature.view(-1))
-        return embedding.view(1, -1), output
+        return embedding.view(1, 1, -1), output

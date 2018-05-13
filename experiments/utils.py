@@ -64,6 +64,7 @@ class BLEUCalculate():
     def add(self, truth, pred):
         # segmentation
         import fool
+        fool.load_userdict('data/foolnltk_userdict')
         truth = fool.cut(truth)
         pred = fool.cut(pred)[0]
         # compute bleu

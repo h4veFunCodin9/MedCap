@@ -29,22 +29,19 @@ class Dataset():
 
     def stat(self):
 
-        w_max, s_max = 0, 0
+        w_max = 0
         for path, caption in self.pairs:
-            s_max = s_max if len(caption) < s_max else len(caption)
-            for sent in caption:
-                if self.lang_mode == 'word':
-                    import fool
-                    cur_len = len([term.strip() for term in fool.cut(sent)[0] if len(term.strip())])
-                else:
-                    assert(self.lang_mode == 'char')
-                    cur_len = len([w.strip() for w in sent if len(w.strip()) > 0])
-
-                w_max = w_max if cur_len < w_max else cur_len
+            if self.lang_mode == 'word':
+                import fool
+                fool.load_userdict('data/foolnltk_userdict')
+                cur_len = len([term for term in fool.cut(caption)[0]])
+            else:
+                assert(self.lang_mode == 'char')
+                cur_len = len(caption)
+            w_max = w_max if cur_len < w_max else cur_len
 
         print('\n#{}# statistics'.format(self.name))
         print('Total len: ', self.__len__())
-        print("Max number of sentences: ", s_max)
         print("Max length of sentences: ", w_max)
         self.lang.stat()
         print('')
@@ -53,9 +50,9 @@ class Dataset():
         return len(self.pairs)
 
     def __getitem__(self, index):
-        cap_var, stop_var = self.variable_from_caption(index)
+        cap_var = self.variable_from_caption(index)
         image_var, seg_var = self.variable_from_image_path(index)
-        return image_var, seg_var, cap_var, stop_var
+        return image_var, seg_var, cap_var
 
     def split_train_val(self, prop):
         l = len(self.pairs)
@@ -65,8 +62,8 @@ class Dataset():
         train_ds = Dataset(self.name+'_train', pairs=train_pairs, mode=self.lang_mode, load_fn=self.im_load_fn)
         val_ds = Dataset(self.name + '_val', pairs=val_pairs, mode=self.lang_mode, load_fn=self.im_load_fn)
 
-        train_ds.set_caption_len(self.max_sent_num, self.max_word_num)
-        val_ds.set_caption_len(self.max_sent_num, self.max_word_num)
+        train_ds.set_caption_len(self.max_word_num)
+        val_ds.set_caption_len(self.max_word_num)
         return train_ds, val_ds
 
     def display(self):
@@ -75,8 +72,7 @@ class Dataset():
                 print("{:30} {}".format(a, getattr(self, a)))
         print("\n\n")
 
-    def set_caption_len(self, max_sent_num, max_word_num):
-        self.max_sent_num = max_sent_num
+    def set_caption_len(self, max_word_num):
         self.max_word_num = max_word_num
 
     def shuffle(self):
@@ -85,26 +81,19 @@ class Dataset():
 
     def variable_from_caption(self, index):
         cap = self.pairs[index][1]
-        indices = []
-        for sent in cap:
-            if self.lang_mode == 'word':
-                import fool
-                terms = fool.cut(sent)
-            else:
-                assert(self.lang_mode == 'char')
-                terms = list(sent)
+        if self.lang_mode == 'word':
+            import fool
+            fool.load_userdict('data/foolnltk_userdict')
+            terms = fool.cut(cap)
             terms = terms[0]
-            indices.append([self.lang.word2idx[term.strip()] for term in terms if len(term.strip()) > 0])
-        stop = [0 if i < len(indices) else 1 for i in range(self.max_sent_num)]
+        else:
+            assert(self.lang_mode == 'char')
+            terms = list(cap)
+        indices = [self.lang.word2idx[term] for term in terms]
 
-        max_len = max([len(sent) for sent in indices])
-        # append End_Of_Sequence token; increase to the same size
-        for sent in indices:
-            sent.extend([EOS_INDEX] * (max_len - len(sent) + 1))
-        indices = torch.autograd.Variable(torch.LongTensor(indices)).view(-1, max_len + 1)
-        stop = torch.autograd.Variable(torch.LongTensor(stop)).view(-1, 1)
-        return indices.cuda() if torch.cuda.is_available() else indices, stop.cuda() \
-            if torch.cuda.is_available() else stop
+        indices.append(EOS_INDEX)
+        indices = torch.autograd.Variable(torch.LongTensor(indices)).view(-1, 1)
+        return indices.cuda() if torch.cuda.is_available() else indices
 
     def variable_from_image_path(self, index):
         image_path = self.pairs[index][0]

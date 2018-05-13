@@ -21,13 +21,14 @@ class Lang:
             terms = list(s)
         elif self.mode == 'word':
             import fool
+            fool.load_userdict('data/foolnltk_userdict')
             terms = fool.cut(s)
         else:
             print("Unknow mode {}.".format(mode))
             return
         terms = terms[0]
         for w in terms:
-            w = w.strip()
+            #w = w.strip()
             if len(w) > 0:
                 self.addWord(w)
 
