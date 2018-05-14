@@ -55,12 +55,18 @@ config.display()
 if args.load_root is not None:
     print('Loading dataset configuration from file.')
     train_dataset, val_dataset, test_dataset = pickle.load(open(os.path.join(args.load_root, 'dataset.pkl'), 'rb'))
+    lang = train_dataset.lang
+    lang.word2weight = {}
+    lang.assign_weight()
+    val_dataset.lang = lang
+    test_dataset.lang = lang
 else:
     trainval_dataset = Dataset('BRATS', args.trainval_cap, args.im, mode=args.seg_mode,
                            load_fn=np.load)
     trainval_dataset.set_caption_len(config.MAX_SENT_NUM, config.MAX_WORD_NUM)
     train_dataset, val_dataset = trainval_dataset.split_train_val(args.val_prop)
     lang = data_utils.generate_lang(train_dataset)
+    lang.assign_weight()
     train_dataset.lang = lang
     val_dataset.lang = lang
 
@@ -72,6 +78,7 @@ else:
 train_dataset.stat()
 val_dataset.stat()
 test_dataset.stat()
+print(train_dataset.lang.word2weight)
 pickle.dump([train_dataset, val_dataset, test_dataset], open(os.path.join(args.store_root, 'dataset.pkl'), 'wb'))
 
 config.DICT_SIZE = len(train_dataset.lang)
