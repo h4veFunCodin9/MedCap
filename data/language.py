@@ -1,4 +1,7 @@
 import numpy as np
+import fool
+fool.load_userdict('data/foolnltk_userdict')
+from functools import reduce
 
 SOS_INDEX = 0
 EOS_INDEX = 1
@@ -15,15 +18,15 @@ class Lang:
         self.idx2word = {0:'SOS', 1:'EOS'}
         self.word2count = {}
         self.n_words = 2
+        self.word2weight = {}
 
     def addSentence(self, s):
         if self.mode == 'char':
             terms = list(s)
         elif self.mode == 'word':
-            import fool
             terms = fool.cut(s)
         else:
-            print("Unknow mode {}.".format(mode))
+            print("Unknow mode {}.".format(self.mode))
             return
         terms = terms[0]
         for w in terms:
@@ -39,6 +42,15 @@ class Lang:
             self.n_words += 1
         else:
             self.word2count[w] += 1
+
+    def assign_weight(self):
+        total_occur = 0
+        for word, count in self.word2count.items():
+            total_occur += count
+        mean_occur = total_occur / len(self.word2count)
+
+        for word, count in self.word2count.items():
+            self.word2weight[word] = mean_occur / count
 
     def __len__(self):
         return self.n_words

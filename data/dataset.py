@@ -3,6 +3,8 @@ from .language import Lang, SOS_INDEX, EOS_INDEX
 import os
 import torch
 import numpy as np
+import fool
+fool.load_userdict('data/foolnltk_userdict')
 
 class Dataset():
     def __init__(self, name, annFile=None, image_root=None, pairs=None, mode='word',
@@ -34,7 +36,6 @@ class Dataset():
             s_max = s_max if len(caption) < s_max else len(caption)
             for sent in caption:
                 if self.lang_mode == 'word':
-                    import fool
                     cur_len = len([term.strip() for term in fool.cut(sent)[0] if len(term.strip())])
                 else:
                     assert(self.lang_mode == 'char')
@@ -88,7 +89,6 @@ class Dataset():
         indices = []
         for sent in cap:
             if self.lang_mode == 'word':
-                import fool
                 terms = fool.cut(sent)
             else:
                 assert(self.lang_mode == 'char')

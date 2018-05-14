@@ -61,6 +61,7 @@ else:
     trainval_dataset.set_caption_len(config.MAX_SENT_NUM, config.MAX_WORD_NUM)
     train_dataset, val_dataset = trainval_dataset.split_train_val(args.val_prop)
     lang = data_utils.generate_lang(train_dataset)
+    lang.assign_weight()
     train_dataset.lang = lang
     val_dataset.lang = lang
 
@@ -75,6 +76,9 @@ test_dataset.stat()
 pickle.dump([train_dataset, val_dataset, test_dataset], open(os.path.join(args.store_root, 'dataset.pkl'), 'wb'))
 
 config.DICT_SIZE = len(train_dataset.lang)
+
+print(train_dataset.lang.word2weight)
+input()
 
 # model
 print("Create model...")

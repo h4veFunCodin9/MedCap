@@ -8,6 +8,8 @@ import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 from PIL import Image
 import numpy as np
+import fool
+fool.load_userdict('data/foolnltk_userdict')
 
 ##########################
 # Time log
@@ -63,7 +65,6 @@ class BLEUCalculate():
 
     def add(self, truth, pred):
         # segmentation
-        import fool
         truth = fool.cut(truth)
         pred = fool.cut(pred)[0]
         # compute bleu
