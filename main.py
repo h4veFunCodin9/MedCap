@@ -56,7 +56,7 @@ if args.load_root is not None:
     print('Loading dataset configuration from file.')
     train_dataset, val_dataset, test_dataset = pickle.load(open(os.path.join(args.load_root, 'dataset.pkl'), 'rb'))
     lang = train_dataset.lang
-    lang.word2weight = {}
+    lang.word2weight = {'EOS': 1}
     lang.assign_weight()
     val_dataset.lang = lang
     test_dataset.lang = lang

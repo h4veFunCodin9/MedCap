@@ -10,7 +10,7 @@ from model.utils import save_model
 
 # forward one sample
 def train(input_variables, seg_target_variables, cap_target_variables, stop_target_variables, encoder, sent_decoder,
-          word_decoder, encoder_optimizer, sent_decoder_optimizer, word_decoder_optimizer, criterion, config):
+          word_decoder, encoder_optimizer, sent_decoder_optimizer, word_decoder_optimizer, criterion, config, lang):
     encoder_optimizer.zero_grad()
     if not config.OnlySeg:
         sent_decoder_optimizer.zero_grad()
@@ -65,7 +65,8 @@ def train(input_variables, seg_target_variables, cap_target_variables, stop_targ
             if teacher_forcing:
                 for word_i in range(_sent_len):
                     word_decoder_output, word_decoder_hidden = word_decoder(word_decoder_input, word_decoder_hidden)
-                    _cap_loss += criterion(word_decoder_output[0], sent_target_variable[word_i])
+                    word_weight = lang.word2weight[lang.idx2word[sent_target_variable[word_i].data.cpu()[0]]]
+                    _cap_loss += word_weight * criterion(word_decoder_output[0], sent_target_variable[word_i])
                     word_decoder_input = sent_target_variable[word_i]
                     _word_seen_num += 1
             else:
@@ -176,7 +177,7 @@ def train_iters(model, train_dataset, val_dataset, config, start_iter=1):
 
             stop_loss, caption_loss, seg_loss = train(input_variables, seg_target_variables, cap_target_variables, stop_target_variables, encoder,
                                             sent_decoder, word_decoder,encoder_optimizer, sent_decoder_optimizer,
-                                            word_decoder_optimizer, criterion, config)
+                                            word_decoder_optimizer, criterion, config, train_dataset.lang)
             # dynamic adjust the learning rate
             #encoder_scheduler.step(seg_loss)
 

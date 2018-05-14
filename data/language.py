@@ -15,7 +15,7 @@ class Lang:
         self.idx2word = {0:'SOS', 1:'EOS'}
         self.word2count = {}
         self.n_words = 2
-        self.word2weight = {}
+        self.word2weight = {'EOS': 1}  # TODO assign weight to EOS
 
     def addSentence(self, s):
         if self.mode == 'char':
