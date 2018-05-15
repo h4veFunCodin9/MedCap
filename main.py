@@ -81,6 +81,11 @@ pickle.dump([train_dataset, val_dataset, test_dataset], open(os.path.join(args.s
 
 # expand after save
 train_dataset.expand()
+lang = data_utils.generate_lang(train_dataset)
+lang.assign_weight()
+train_dataset.lang = lang
+test_dataset.lang = lang
+val_dataset.lang = lang
 
 train_dataset.stat()
 val_dataset.stat()
