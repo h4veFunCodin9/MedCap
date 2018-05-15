@@ -30,10 +30,10 @@ class Config(object):
 
     # Training procedure
     NumIters = 500
-    BatchSize = 16
+    BatchSize = 15
     PrintFrequency = 1
     PlotFrequency = 1
-    SaveFrequency = 50
+    SaveFrequency = 10
 
 
 class BRATSConfig(Config):
