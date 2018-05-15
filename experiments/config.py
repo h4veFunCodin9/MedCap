@@ -30,7 +30,7 @@ class Config(object):
 
     # Training procedure
     NumIters = 500
-    BatchSize = 15
+    BatchSize = 12
     PrintFrequency = 1
     PlotFrequency = 1
     SaveFrequency = 10
