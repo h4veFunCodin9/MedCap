@@ -3,8 +3,7 @@
 #########################
 
 class Config(object):
-
-   # Segmentation classes
+    # Segmentation classes
     SegClasses = 4
     # image embedding size
     IM_EmbeddingSize = 512
@@ -34,6 +33,8 @@ class Config(object):
     PrintFrequency = 1
     PlotFrequency = 1
     SaveFrequency = 50
+
+    is_weighted_word_loss = False
 
 
 class BRATSConfig(Config):

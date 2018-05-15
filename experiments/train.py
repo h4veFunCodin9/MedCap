@@ -65,14 +65,14 @@ def train(input_variables, seg_target_variables, cap_target_variables, stop_targ
             if teacher_forcing:
                 for word_i in range(_sent_len):
                     word_decoder_output, word_decoder_hidden = word_decoder(word_decoder_input, word_decoder_hidden)
-                    word_weight = lang.word2weight[lang.idx2word[sent_target_variable[word_i].data.cpu()[0]]]
+                    word_weight = lang.word2weight[lang.idx2word[sent_target_variable[word_i].data.cpu()[0]]] if config.is_weighted_word_loss else 1
                     _cap_loss += word_weight * criterion(word_decoder_output[0], sent_target_variable[word_i])
                     word_decoder_input = sent_target_variable[word_i]
                     _word_seen_num += 1
             else:
                 for word_i in range(_sent_len):
                     word_decoder_output, word_decoder_hidden = word_decoder(word_decoder_input, word_decoder_hidden)
-                    word_weight = lang.word2weight[lang.idx2word[sent_target_variable[word_i].data.cpu()[0]]]
+                    word_weight = lang.word2weight[lang.idx2word[sent_target_variable[word_i].data.cpu()[0]]] if config.is_weighted_word_loss else 1
                     _cap_loss += word_weight * criterion(word_decoder_output[0], sent_target_variable[word_i])
                     topv, topi = word_decoder_output[0].data.topk(1)
                     ni = topi[0][0]
