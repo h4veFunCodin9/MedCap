@@ -3,6 +3,8 @@ from .language import Lang, SOS_INDEX, EOS_INDEX
 import os
 import torch
 import numpy as np
+import fool
+import math
 
 class Dataset():
     def __init__(self, name, annFile=None, image_root=None, pairs=None, mode='word',
@@ -34,7 +36,6 @@ class Dataset():
             s_max = s_max if len(caption) < s_max else len(caption)
             for sent in caption:
                 if self.lang_mode == 'word':
-                    import fool
                     cur_len = len([term.strip() for term in fool.cut(sent)[0] if len(term.strip())])
                 else:
                     assert(self.lang_mode == 'char')
@@ -83,12 +84,34 @@ class Dataset():
         import random
         random.shuffle(self.pairs)
 
+
+    def expand(self):
+        cap2score = {}  # the rareness of a caption
+        for k, pair in enumerate(self.pairs):
+            score = 0
+            n_word = 0
+            for sent in pair[1]:
+                terms = fool.cut(sent)[0]
+                for term in terms:
+                    term = term.strip()
+                    if len(term) > 0:
+                        score += self.lang.word2weight[term]
+                        n_word += 1
+            cap2score[k] = score / n_word
+
+        min_score = min([v for k, v in cap2score.items()])
+        extra_pairs = []
+        for i, score in cap2score.items():
+            sample_times = int(math.ceil(score / min_score))
+            extra_pairs.extend([self.pairs[i]]*(sample_times-1))
+        self.pairs.extend(extra_pairs)
+        self.shuffle()
+
     def variable_from_caption(self, index):
         cap = self.pairs[index][1]
         indices = []
         for sent in cap:
             if self.lang_mode == 'word':
-                import fool
                 terms = fool.cut(sent)
             else:
                 assert(self.lang_mode == 'char')

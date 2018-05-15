@@ -54,6 +54,7 @@ config.display()
 # dataset
 if args.load_root is not None:
     print('Loading dataset configuration from file.')
+    # the dataset is not expanded
     train_dataset, val_dataset, test_dataset = pickle.load(open(os.path.join(args.load_root, 'dataset.pkl'), 'rb'))
     lang = train_dataset.lang
     lang.word2weight = {'EOS': 1}
@@ -75,11 +76,17 @@ else:
     test_dataset.set_caption_len(config.MAX_SENT_NUM, config.MAX_WORD_NUM)
     test_dataset.lang = lang
 
+# always save origin dataset
+pickle.dump([train_dataset, val_dataset, test_dataset], open(os.path.join(args.store_root, 'dataset.pkl'), 'wb'))
+
+# expand after save
+train_dataset.expand()
+
 train_dataset.stat()
 val_dataset.stat()
 test_dataset.stat()
+
 print(train_dataset.lang.word2weight)
-pickle.dump([train_dataset, val_dataset, test_dataset], open(os.path.join(args.store_root, 'dataset.pkl'), 'wb'))
 
 config.DICT_SIZE = len(train_dataset.lang)
 
