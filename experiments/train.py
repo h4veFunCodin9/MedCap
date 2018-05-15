@@ -72,7 +72,8 @@ def train(input_variables, seg_target_variables, cap_target_variables, stop_targ
             else:
                 for word_i in range(_sent_len):
                     word_decoder_output, word_decoder_hidden = word_decoder(word_decoder_input, word_decoder_hidden)
-                    _cap_loss += criterion(word_decoder_output[0], sent_target_variable[word_i])
+                    word_weight = lang.word2weight[lang.idx2word[sent_target_variable[word_i].data.cpu()[0]]]
+                    _cap_loss += word_weight * criterion(word_decoder_output[0], sent_target_variable[word_i])
                     topv, topi = word_decoder_output[0].data.topk(1)
                     ni = topi[0][0]
 
