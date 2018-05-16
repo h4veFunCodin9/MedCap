@@ -316,15 +316,13 @@ class COCO:
         assert type(anns) == list, 'results in not an array of objects'
 
         # annsImgIds = [ann['image_id'] for ann in anns]
-        # change by ZhengHe
+        # change by Zhoutao
         annsImgIds = []
         for ann in anns:
             assert ann['image_id'] != '','image_id must have a name'
             assert ann['caption'] != '', 'caption must be a string'
 
-            w = jieba.cut(ann['caption'].strip().replace('。',''), cut_all=False)
-            p = ' '.join(w)
-            ann['caption'] = p
+            ann['caption'] = ann['caption'].strip().replace('。','')
             ann['image_id'] = get_image_dict(ann['image_id'])
             annsImgIds.append((ann['image_id']))
 
