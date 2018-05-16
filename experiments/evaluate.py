@@ -141,4 +141,4 @@ def display_randomly(model, lang, dataset, config, im_load_fn):
     truth_cap = ' 。 '.join([' '.join(sent) for sent in raw_pair[1]])
     print("Truth: ", truth_cap)
     seg, pred_cap = evaluate(encoder, sent_decoder, word_decoder, lang, im_var, config, im_load_fn=im_load_fn)
-    print("Prediction:", '。'.join([''.join(sent) for sent in pred_cap]))
+    print("Prediction:", ' 。 '.join([' '.join(sent) for sent in pred_cap]))
