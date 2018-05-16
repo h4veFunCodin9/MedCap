@@ -212,7 +212,7 @@ def train_iters(model, train_dataset, val_dataset, config, start_iter=1):
                          dataset_index / dataset_size * 100,
                          print_loss_avg, print_seg_loss_avg, iou[0], iou[1], iou[2], iou[3]))
                 else:
-                    iou, bleu_scores = evaluate_pairs(model, train_dataset.lang, val_dataset, config, np.load)
+                    iou, bleu_scores = evaluate_pairs(model, train_dataset.lang, val_dataset, config, np.load, iter=iter)
                     print('[Iter: %d, Batch: %d]%s (%d %d%%) loss = %.3f, seg_loss = %.3f, stop_loss = %.3f, '
                           'caption_loss = %.3f; Val: iou = [%.3f, %.3f, %.3f, %.3f], bleu_score = [%.3f, %.3f, %.3f, %.3f]' %
                     (iter, batch_index, time_since(start, dataset_index / dataset_size), dataset_index,
