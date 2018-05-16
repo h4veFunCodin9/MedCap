@@ -11,8 +11,8 @@ def unicode_to_ascii(s):
     )
 
 def normalize_string(s):
-    s = unicode_to_ascii(s.lower().strip())
-    s = re.sub(r"([。*])", r" \1 ", s)   #将标点符号用空格分开
+    s = unicode_to_ascii(s.strip())
+    #s = re.sub(r"([。*])", r" \1 ", s)   #将标点符号用空格分开
     #s = re.sub(r"[^a-zA-Z.!?]+", r" ", s)  #除字母标点符号的其他连续字符替换成一个空格
     return s
 
@@ -23,9 +23,10 @@ def read_captions(annFile, image_root):
     for p_str in dataset:
         if len(p_str) <= 1:
             continue
-        image_id, caption, summary = p_str.split('\t')
+        image_id, caption = p_str.split('\t')
         caption = normalize_string(caption)
-        caption = [sent.strip() for sent in caption.split(' 。 ') if len(sent.strip()) > 0]
+        caption = [ [word for word in sent.split(' ') if len(word)>0]
+                        for sent in caption.split(' 。 ') if len(sent.strip()) > 0]
         pairs.append((os.path.join(image_root, image_id+'.npy'), caption))
     return pairs
 
