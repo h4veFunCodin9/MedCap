@@ -34,8 +34,7 @@ class Dataset():
             s_max = s_max if len(caption) < s_max else len(caption)
             for sent in caption:
                 if self.lang_mode == 'word':
-                    import fool
-                    cur_len = len([term.strip() for term in fool.cut(sent)[0] if len(term.strip())])
+                    cur_len = len([term.strip() for term in sent if len(term.strip())])
                 else:
                     assert(self.lang_mode == 'char')
                     cur_len = len([w.strip() for w in sent if len(w.strip()) > 0])
