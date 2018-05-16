@@ -89,4 +89,4 @@ if args.command == 'train':
 
 if args.command in ['train', 'test']:
     print("--------Test--------")
-    evaluate_pairs(model, train_dataset.lang, test_dataset, config, np.load, verbose=True)
+    evaluate_pairs(model, train_dataset.lang, test_dataset, config, np.load, iter='test', verbose=True)
