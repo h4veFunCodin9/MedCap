@@ -19,6 +19,7 @@
 
 import sys
 import argparse
+import os
 
 reload(sys)
 sys.setdefaultencoding('utf8')
@@ -58,10 +59,22 @@ def main():
                         help=' JSON references.')
     args = parser.parse_args()
 
-    json_predictions_file = args.submit
+    json_predictions_root = args.submit
     reference_file = args.ref
-    print compute_m1(json_predictions_file, reference_file)
 
+    scores = {}
+    for json_file in os.listdir(json_predictions_root):
+        if 'json' not in json_file:
+            continue
+        iter_num = int(json_file[:-5])
+        json_file = os.path.join(json_predictions_root, json_file)
+        res = compute_m1(json_file, reference_file)
+        scores[iter_num] = res
+
+    print res # print the last metrics scores
+    import pickle
+    pickle.dump(scores, open('scores.pkl', 'wb'))
+    print 'evaluation done!'
 
 if __name__ == "__main__":
     main()
