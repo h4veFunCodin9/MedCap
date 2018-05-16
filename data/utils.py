@@ -23,9 +23,9 @@ def read_captions(annFile, image_root):
     for p_str in dataset:
         if len(p_str) <= 1:
             continue
-        image_id, caption, summary = p_str.split('\t')
+        image_id, caption = p_str.split('\t')
         caption = normalize_string(caption)
-        caption = [sent.strip() for sent in caption.split(' 。 ') if len(sent.strip()) > 0]
+        caption = [[w for w in sent.split(' ')] for sent in caption.split(' 。 ') if len(sent.strip()) > 0]
         pairs.append((os.path.join(image_root, image_id+'.npy'), caption))
     return pairs
 

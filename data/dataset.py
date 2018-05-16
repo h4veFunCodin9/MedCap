@@ -36,7 +36,7 @@ class Dataset():
             s_max = s_max if len(caption) < s_max else len(caption)
             for sent in caption:
                 if self.lang_mode == 'word':
-                    cur_len = len([term.strip() for term in fool.cut(sent)[0] if len(term.strip())])
+                    cur_len = len([term.strip() for term in sent if len(term.strip())])
                 else:
                     assert(self.lang_mode == 'char')
                     cur_len = len([w.strip() for w in sent if len(w.strip()) > 0])
@@ -91,8 +91,7 @@ class Dataset():
             score = 0
             n_word = 0
             for sent in pair[1]:
-                terms = fool.cut(sent)[0]
-                for term in terms:
+                for term in sent:
                     term = term.strip()
                     if len(term) > 0:
                         score += self.lang.word2weight[term]
@@ -111,13 +110,7 @@ class Dataset():
         cap = self.pairs[index][1]
         indices = []
         for sent in cap:
-            if self.lang_mode == 'word':
-                terms = fool.cut(sent)
-            else:
-                assert(self.lang_mode == 'char')
-                terms = list(sent)
-            terms = terms[0]
-            indices.append([self.lang.word2idx[term.strip()] for term in terms if len(term.strip()) > 0])
+            indices.append([self.lang.word2idx[term.strip()] for term in sent if len(term.strip()) > 0])
         stop = [0 if i < len(indices) else 1 for i in range(self.max_sent_num)]
 
         max_len = max([len(sent) for sent in indices])
