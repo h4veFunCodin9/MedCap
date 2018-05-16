@@ -32,8 +32,7 @@ def compute_m1(json_predictions_file, reference_file):
     """Compute m1_score"""
     m1_score = {}
     m1_score['error'] = 0
-    #try:
-    if True:
+    try:
         coco = COCO(reference_file)
         print 'loaded reference'
         coco_res = coco.loadRes(json_predictions_file)
@@ -44,9 +43,9 @@ def compute_m1(json_predictions_file, reference_file):
         # evaluate results
         coco_eval.evaluate()
         print('Finished')
-    #except Exception:
-    #    m1_score['error'] = 1
-    if True:#else:
+    except Exception:
+        m1_score['error'] = 1
+    else:
         # print output evaluation scores
         for metric, score in coco_eval.eval.items():
             print '%s: %.3f'%(metric, score)
