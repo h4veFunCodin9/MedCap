@@ -33,7 +33,7 @@ class Config(object):
     BatchSize = 1
     PrintFrequency = 1
     PlotFrequency = 1
-    SaveFrequency = 50
+    SaveFrequency = 10
 
 
 class BRATSConfig(Config):

@@ -15,6 +15,7 @@ class Lang:
         self.idx2word = {0:'SOS', 1:'EOS'}
         self.word2count = {}
         self.n_words = 2
+        self.word2weight = {}
 
     def addSentence(self, s):
         for w in s:
@@ -30,6 +31,15 @@ class Lang:
             self.n_words += 1
         else:
             self.word2count[w] += 1
+
+    def assign_weight(self):
+        total_occur = 0
+        for word, count in self.word2count.items():
+            total_occur += count
+        mean_occur = total_occur / len(self.word2count)
+
+        for word, count in self.word2count.items():
+            self.word2weight[word] = mean_occur / count
 
     def __len__(self):
         return self.n_words
