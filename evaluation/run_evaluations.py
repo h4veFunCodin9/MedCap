@@ -32,6 +32,7 @@ def compute_m1(json_predictions_file, reference_file):
     m1_score['error'] = 0
     try:
         coco = COCO(reference_file)
+        print 'loaded reference'
         coco_res = coco.loadRes(json_predictions_file)
 
         # create coco_eval object.
