@@ -92,7 +92,7 @@ def evaluate_pairs(model, lang, dataset, config, im_load_fn, n=-1, verbose=False
         im_var, seg_var = dataset.variable_from_image_path(i)
         raw_pair = dataset.pairs[i]
         image_name = os.path.basename(raw_pair[0])
-        truth_cap = '。'.join(raw_pair[1])
+        truth_cap = raw_pair[1]
         truth_seg = seg_var.data.cpu().numpy()
 
         # evaluate
@@ -101,7 +101,6 @@ def evaluate_pairs(model, lang, dataset, config, im_load_fn, n=-1, verbose=False
             pred_seg = evaluate(encoder, sent_decoder, word_decoder, lang, im_var, config, im_load_fn=im_load_fn)
         else:
             pred_seg, pred_cap = evaluate(encoder, sent_decoder, word_decoder, lang, im_var, config, im_load_fn=im_load_fn)
-            pred_cap = '。'.join([''.join(sent) for sent in pred_cap])
 
         # metrics
         assert(pred_seg is not None)
@@ -128,7 +127,7 @@ def display_randomly(model, lang, dataset, config, im_load_fn):
     i = random.randint(0, len(dataset)-1)
     im_var, seg_var = dataset.variable_from_image_path(i)
     raw_pair = dataset.pairs[i]
-    truth_cap = '。'.join(raw_pair[1])
+    truth_cap = ' 。 '.join([' '.join(sent) for sent in raw_pair[1]])
     print("Truth: ", truth_cap)
     seg, pred_cap = evaluate(encoder, sent_decoder, word_decoder, lang, im_var, config, im_load_fn=im_load_fn)
     print("Prediction:", '。'.join([''.join(sent) for sent in pred_cap]))

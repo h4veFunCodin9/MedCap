@@ -87,14 +87,7 @@ class Dataset():
         cap = self.pairs[index][1]
         indices = []
         for sent in cap:
-            if self.lang_mode == 'word':
-                import fool
-                terms = fool.cut(sent)
-            else:
-                assert(self.lang_mode == 'char')
-                terms = list(sent)
-            terms = terms[0]
-            indices.append([self.lang.word2idx[term.strip()] for term in terms if len(term.strip()) > 0])
+            indices.append([self.lang.word2idx[word.strip()] for word in sent if len(word.strip()) > 0])
         stop = [0 if i < len(indices) else 1 for i in range(self.max_sent_num)]
 
         max_len = max([len(sent) for sent in indices])
