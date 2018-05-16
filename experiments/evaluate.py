@@ -56,7 +56,7 @@ def evaluate(encoder, sent_decoder, word_decoder, lang, image_var, config, im_lo
 
 
 # randomly choose n images and predict their captions, store the resulted image
-def evaluate_pairs(model, lang, dataset, config, im_load_fn, n=-1, verbose=False):
+def evaluate_pairs(model, lang, dataset, config, im_load_fn, n=-1, iter=1, verbose=False):
     encoder = model['encoder']
     sent_decoder = model['sent_decoder']
     word_decoder = model['word_decoder']
@@ -64,7 +64,10 @@ def evaluate_pairs(model, lang, dataset, config, im_load_fn, n=-1, verbose=False
     store_path = os.path.join(config.StoreRoot, 'evaluation')
     if not os.path.exists(store_path):
         os.makedirs(store_path)
-    cap_store_path = os.path.join(store_path, 'captions.csv')
+    cap_store_root = os.path.join(store_path, 'captions')
+    if not os.path.exists(cap_store_root):
+        os.makedirs(cap_store_root)
+    cap_store_path = os.path.join(cap_store_root, str(iter)+'.json')
 
     # how many samples to be evaluated
     dataset.shuffle()
@@ -75,7 +78,7 @@ def evaluate_pairs(model, lang, dataset, config, im_load_fn, n=-1, verbose=False
     bleu_calculator = utils.BLEUCalculate()
 
     # logs
-    pred_captions = {'id':[], 'caption':[]}
+    pred_captions = []
 
     for i in range(n):
         if verbose:
@@ -85,20 +88,26 @@ def evaluate_pairs(model, lang, dataset, config, im_load_fn, n=-1, verbose=False
         im_var, seg_var = dataset.variable_from_image_path(i)
         raw_pair = dataset.pairs[i]
         truth_cap = raw_pair[1]
+        image_name = os.path.basename(raw_pair[0])
 
         # evaluate
         pred_cap = evaluate(encoder, sent_decoder, word_decoder, lang, im_var, config, im_load_fn=im_load_fn)
-        pred_cap = '。'.join([''.join(sent) for sent in pred_cap])
 
         # metrics
         bleu_calculator.add(truth_cap, pred_cap)
 
         # add cur result
-        pred_captions[os.path.basename(raw_pair[0])[:-4]] = ' 。 '.join([' '.join(sent) for sent in pred_cap])
+        pred_captions.append(
+            {
+                'image_id': os.path.basename(raw_pair[0])[:-4],
+                'caption': ' 。 '.join([' '.join(sent) for sent in pred_cap])
+            }
+        )
 
     # store caption results
-    df = DataFrame(pred_captions)
-    df.to_csv(cap_store_path)
+    import json
+    with open(cap_store_path, 'w+') as f:
+        f.write(json.dumps(pred_captions))
 
     return bleu_calculator.get_scores()
 

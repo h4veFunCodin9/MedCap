@@ -181,7 +181,7 @@ def train_iters(model, train_dataset, val_dataset, config, start_iter=1):
                 print_stop_loss_avg = print_stop_loss_total / print_every
                 print_caption_loss_avg = print_caption_loss_total / print_every
 
-                bleu_scores = evaluate_pairs(model, train_dataset.lang, val_dataset, config, np.load)
+                bleu_scores = evaluate_pairs(model, train_dataset.lang, val_dataset, config, np.load, iter=iter)
                 print('[Iter: %d, Batch: %d]%s (%d %d%%) loss = %.3f stop_loss = %.3f, '
                           'caption_loss = %.3f; Val: bleu_score = [%.3f, %.3f, %.3f, %.3f]' %
                     (iter, batch_index, time_since(start, dataset_index / dataset_size), dataset_index,
