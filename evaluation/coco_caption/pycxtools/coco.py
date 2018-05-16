@@ -106,7 +106,6 @@ class COCO:
                 image2hash[img['file_name']] = img['id']
         self.image2hash = image2hash
 
-
         cats = []
         catToImgs = []
         if self.dataset['type'] == 'instances':
