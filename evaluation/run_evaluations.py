@@ -31,19 +31,21 @@ def compute_m1(json_predictions_file, reference_file):
     """Compute m1_score"""
     m1_score = {}
     m1_score['error'] = 0
-    try:
+    #try:
+    if True:
         coco = COCO(reference_file)
         print 'loaded reference'
         coco_res = coco.loadRes(json_predictions_file)
-
+        print('loaded results')
         # create coco_eval object.
         coco_eval = COCOEvalCap(coco, coco_res)
-
+        print('Eval finished.')
         # evaluate results
         coco_eval.evaluate()
-    except Exception:
-        m1_score['error'] = 1
-    else:
+        print('Finished')
+    #except Exception:
+    #    m1_score['error'] = 1
+    if True:#else:
         # print output evaluation scores
         for metric, score in coco_eval.eval.items():
             print '%s: %.3f'%(metric, score)
@@ -58,12 +60,19 @@ def main():
                         help=' JSON containing submit sentences.')
     parser.add_argument("-ref", "--ref", type=str,
                         help=' JSON references.')
+    parser.add_argument("-store", '--store', type=str,
+                        help='metrics score pickle file')
     args = parser.parse_args()
 
     json_predictions_root = args.submit
     reference_file = args.ref
+    pickle_file = args.store
 
-    scores = {}
+    if os.path.isfile(pickle_file):
+        scores = pickle.load(open(pickle_file, 'rb'))
+    else:
+        scores = {}
+
     for json_file in os.listdir(json_predictions_root):
         if 'json' not in json_file:
             continue
@@ -74,7 +83,7 @@ def main():
 
     print res # print the last metrics scores
     import pickle
-    pickle.dump(scores, open('scores.pkl', 'wb'))
+    pickle.dump(scores, open(pickle_file, 'wb'))
     print 'evaluation done!'
 
 if __name__ == "__main__":
