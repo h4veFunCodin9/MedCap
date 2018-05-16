@@ -18,16 +18,7 @@ class Lang:
         self.word2weight = {'EOS': 1}  # TODO assign weight to EOS
 
     def addSentence(self, s):
-        if self.mode == 'char':
-            terms = list(s)
-        elif self.mode == 'word':
-            import fool
-            terms = fool.cut(s)
-        else:
-            print("Unknow mode {}.".format(mode))
-            return
-        terms = terms[0]
-        for w in terms:
+        for w in s:
             w = w.strip()
             if len(w) > 0:
                 self.addWord(w)
