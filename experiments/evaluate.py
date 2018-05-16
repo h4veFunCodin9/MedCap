@@ -57,9 +57,8 @@ def evaluate(encoder, sent_decoder, word_decoder, lang, image_var, config, im_lo
         decoded_caption.append(decoded_sentence)
     return pred_seg.data.cpu().numpy(), decoded_caption
 
-
 # randomly choose n images and predict their captions, store the resulted image
-def evaluate_pairs(model, lang, dataset, config, im_load_fn, n=-1, verbose=False):
+def evaluate_pairs(model, lang, dataset, config, im_load_fn, n=-1, iter=1, verbose=False):
     encoder = model['encoder']
     sent_decoder = model['sent_decoder']
     word_decoder = model['word_decoder']
@@ -70,7 +69,11 @@ def evaluate_pairs(model, lang, dataset, config, im_load_fn, n=-1, verbose=False
     seg_store_root = os.path.join(store_path, 'seg')
     if not os.path.exists(seg_store_root):
         os.makedirs(seg_store_root)
-    cap_store_path = os.path.join(store_path, 'captions.csv')
+    cap_store_root = os.path.join(store_path, 'captions')
+    if not os.path.exists(cap_store_root):
+        os.makedirs(cap_store_root)
+    cap_store_path = os.path.join(cap_store_root, str(iter)+'.json')
+
 
     # how many samples to be evaluated
     dataset.shuffle()
@@ -82,7 +85,7 @@ def evaluate_pairs(model, lang, dataset, config, im_load_fn, n=-1, verbose=False
     iou_calculator = utils.IOUCalculate()
 
     # logs
-    pred_captions = {'id':[], 'caption':[]}
+    pred_captions = []
 
     for i in range(n):
         if verbose:
@@ -107,17 +110,24 @@ def evaluate_pairs(model, lang, dataset, config, im_load_fn, n=-1, verbose=False
         iou_calculator.add(truth_seg, pred_seg)
         if pred_cap is not None:
             bleu_calculator.add(truth_cap, pred_cap)
-            pred_captions[os.path.basename(raw_pair[0])[:-4]] = ' 。 '.join([' '.join(sent) for sent in pred_cap])
+            pred_captions.append(
+                {
+                    'image_id': os.path.basename(raw_pair[0])[:-4],
+                    'caption': ' 。 '.join([' '.join(sent) for sent in pred_cap])
+                }
+            )
 
         # store seg results
         np.save(os.path.join(seg_store_root, image_name), pred_seg)
 
     # store caption results
     if not config.OnlySeg:
-        df = DataFrame(pred_captions)
-        df.to_csv(cap_store_path)
+        import json
+        with open(cap_store_path, 'w+') as f:
+            f.write(json.dumps(pred_captions))
 
     return iou_calculator.get_iou(), bleu_calculator.get_scores()
+
 
 
 def display_randomly(model, lang, dataset, config, im_load_fn):
