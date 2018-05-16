@@ -60,14 +60,15 @@ else:
                            load_fn=np.load)
     trainval_dataset.set_caption_len(config.MAX_SENT_NUM, config.MAX_WORD_NUM)
     train_dataset, val_dataset = trainval_dataset.split_train_val(args.val_prop)
-    lang = data_utils.generate_lang(train_dataset)
-    train_dataset.lang = lang
-    val_dataset.lang = lang
 
     test_dataset = Dataset('BRATS_test', args.test_cap, args.im, mode=args.seg_mode,
                        load_fn=np.load)
     test_dataset.set_caption_len(config.MAX_SENT_NUM, config.MAX_WORD_NUM)
-    test_dataset.lang = lang
+
+lang = data_utils.generate_lang(train_dataset)
+train_dataset.lang = lang
+val_dataset.lang = lang
+test_dataset.lang = lang
 
 train_dataset.stat()
 val_dataset.stat()
