@@ -20,6 +20,7 @@
 import sys
 import argparse
 import os
+import pickle
 
 reload(sys)
 sys.setdefaultencoding('utf8')
@@ -76,13 +77,16 @@ def main():
     for json_file in os.listdir(json_predictions_root):
         if 'json' not in json_file:
             continue
+
         iter_num = int(json_file[:-5])
+        if iter_num in scores:
+            continue
+
         json_file = os.path.join(json_predictions_root, json_file)
         res = compute_m1(json_file, reference_file)
         scores[iter_num] = res
 
     print res # print the last metrics scores
-    import pickle
     pickle.dump(scores, open(pickle_file, 'wb'))
     print 'evaluation done!'
 
