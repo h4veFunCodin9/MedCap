@@ -63,15 +63,20 @@ class BLEUCalculate():
 
     def add(self, truth, pred):
         # segmentation
-        import fool
-        truth = fool.cut(truth)
-        pred = fool.cut(pred)[0]
+        truth_word = []
+        for sent in truth:
+            truth_word.extend(sent)
+            truth_word.append(' 。 ')
+        pred_word = []
+        for sent in pred:
+            pred_word.extend(sent)
+            pred_word.append(' 。 ')
         # compute bleu
         import nltk
-        self.score1 += nltk.translate.bleu(truth, pred, weights=[1, 0, 0, 0])
-        self.score2 += nltk.translate.bleu(truth, pred, weights=[0, 1, 0, 0])
-        self.score3 += nltk.translate.bleu(truth, pred, weights=[0, 0, 1, 0])
-        self.score4 += nltk.translate.bleu(truth, pred, weights=[0, 0, 0, 1])
+        self.score1 += nltk.translate.bleu(truth_word, pred_word, weights=[1, 0, 0, 0])
+        self.score2 += nltk.translate.bleu(truth_word, pred_word, weights=[0, 1, 0, 0])
+        self.score3 += nltk.translate.bleu(truth_word, pred_word, weights=[0, 0, 1, 0])
+        self.score4 += nltk.translate.bleu(truth_word, pred_word, weights=[0, 0, 0, 1])
         self.n += 1
 
     def get_scores(self):

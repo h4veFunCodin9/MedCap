@@ -84,7 +84,7 @@ def evaluate_pairs(model, lang, dataset, config, im_load_fn, n=-1, verbose=False
         # prepare data
         im_var, seg_var = dataset.variable_from_image_path(i)
         raw_pair = dataset.pairs[i]
-        truth_cap = '。'.join(raw_pair[1])
+        truth_cap = raw_pair[1]
 
         # evaluate
         pred_cap = evaluate(encoder, sent_decoder, word_decoder, lang, im_var, config, im_load_fn=im_load_fn)
@@ -92,6 +92,9 @@ def evaluate_pairs(model, lang, dataset, config, im_load_fn, n=-1, verbose=False
 
         # metrics
         bleu_calculator.add(truth_cap, pred_cap)
+
+        # add cur result
+        pred_captions[os.path.basename(raw_pair[0])[:-4]] = ' 。 '.join([' '.join(sent) for sent in pred_cap])
 
     # store caption results
     df = DataFrame(pred_captions)
@@ -108,7 +111,7 @@ def display_randomly(model, lang, dataset, config, im_load_fn):
     i = random.randint(0, len(dataset)-1)
     im_var, seg_var = dataset.variable_from_image_path(i)
     raw_pair = dataset.pairs[i]
-    truth_cap = '。'.join(raw_pair[1])
+    truth_cap = ' 。 '.join([' '.join(sent) for sent in raw_pair[1]])
     print("Truth: ", truth_cap)
     pred_cap = evaluate(encoder, sent_decoder, word_decoder, lang, im_var, config, im_load_fn=im_load_fn)
-    print("Prediction:", '。'.join([''.join(sent) for sent in pred_cap]))
+    print("Prediction:", ' 。 '.join([' '.join(sent) for sent in pred_cap]))
