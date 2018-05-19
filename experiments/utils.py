@@ -71,6 +71,9 @@ class BLEUCalculate():
         for sent in pred:
             pred_word.extend(sent)
             pred_word.append(' 。 ')
+
+        truth_word = [truth_word]
+
         # compute bleu
         import nltk
         self.score1 += nltk.translate.bleu(truth_word, pred_word, weights=[1, 0, 0, 0])
