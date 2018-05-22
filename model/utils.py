@@ -9,14 +9,14 @@ def get_model(config):
     # without segmentation-oriented initialization
     encoder.init_contract_path()
 
-    sent_decoder = SentDecoder(config)
+    #sent_decoder = SentDecoder(config)
     word_decoder = WordDecoder(config)
 
     if torch.cuda.is_available():
         encoder = encoder.cuda()
-        sent_decoder = sent_decoder.cuda() if sent_decoder is not None else None
+        #sent_decoder = sent_decoder.cuda() if sent_decoder is not None else None
         word_decoder = word_decoder.cuda() if word_decoder is not None else None
-    return {'encoder': encoder, 'sent_decoder': sent_decoder, 'word_decoder': word_decoder}
+    return {'encoder': encoder, 'word_decoder': word_decoder}
 
 def save_model(model, config, suffix=""):
     model_root = os.path.join(config.StoreRoot, 'model')

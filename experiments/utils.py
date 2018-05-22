@@ -66,11 +66,7 @@ class BLEUCalculate():
         truth_word = []
         for sent in truth:
             truth_word.extend(sent)
-            truth_word.append(' 。 ')
-        pred_word = []
-        for sent in pred:
-            pred_word.extend(sent)
-            pred_word.append(' 。 ')
+        pred_word = pred[0]
 
         truth_word = [truth_word]
 

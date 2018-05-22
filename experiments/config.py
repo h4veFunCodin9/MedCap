@@ -44,7 +44,7 @@ class BRATSConfig(Config):
 
         # the maximum number of sentences and maximum number of words per sentence
         self.MAX_SENT_NUM = 15
-        self.MAX_WORD_NUM = 60
+        self.MAX_WORD_NUM = 160
 
         # dictionary size
         #self.DICT_SIZE = len(lang)
