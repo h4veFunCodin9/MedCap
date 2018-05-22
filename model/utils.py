@@ -26,14 +26,14 @@ def save_model(model, config, suffix=""):
     # save the model
     print("Saving models...")
     torch.save(model['encoder'].state_dict(), os.path.join(model_root, "encoder_"+suffix))
-    torch.save(model['sent_decoder'].state_dict(), os.path.join(model_root, "sent_decoder_"+suffix))
+    #torch.save(model['sent_decoder'].state_dict(), os.path.join(model_root, "sent_decoder_"+suffix))
     torch.save(model['word_decoder'].state_dict(), os.path.join(model_root, "word_decoder_"+suffix))
     print("Done!")
 
 
 def load_model(model, load_root):
     encoder_path = os.path.join(load_root, 'encoder')
-    sent_decoder_path = os.path.join(load_root, 'sent_decoder')
+    #sent_decoder_path = os.path.join(load_root, 'sent_decoder')
     word_decoder_path = os.path.join(load_root, 'word_decoder')
 
     if os.path.isfile(encoder_path):
@@ -41,10 +41,10 @@ def load_model(model, load_root):
         model['encoder'].load_state_dict(torch.load(encoder_path))
         print("Loaded!")
 
-    if os.path.isfile(sent_decoder_path):
+    '''if os.path.isfile(sent_decoder_path):
         print("Loading the model for 'sent_decoder' from '{}' ...".format(sent_decoder_path))
         model['sent_decoder'].load_state_dict(torch.load(sent_decoder_path))
-        print("Loaded!")
+        print("Loaded!")'''
 
     if os.path.isfile(word_decoder_path):
         print("Loading the model for 'word_decoder' from '{}' ...".format(word_decoder_path))
